@@ -17,6 +17,7 @@ type Filter = 'ALL' | 'UNREAD' | 'ONLINE'
 const STARTED_FROM: Record<Thread['startedFrom'], string> = {
   CHAT_LINK: 'Started from the chat link',
   ORDER_FORM: 'Started from the order form',
+  PORTAL: 'Started from the client portal',
 }
 
 export function Inbox({ threadId }: { threadId?: string }) {

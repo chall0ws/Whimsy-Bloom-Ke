@@ -2,6 +2,7 @@ import { Lock, RotateCcw, ShieldCheck } from 'lucide-react'
 import { useState } from 'react'
 import { PageHeader } from '../components/Layout'
 import { Button, Card, cx, Field, inputClass, Modal } from '../components/ui'
+import { useAuth } from '../auth/AuthProvider'
 import { DEFAULT_SETTINGS } from '../domain/catalog'
 import { formatDateTime } from '../domain/format'
 import type { Settings as SettingsT } from '../domain/types'
@@ -9,6 +10,7 @@ import { userName, useStore } from '../state/store'
 
 export function Settings() {
   const { state, isSuperAdmin, dispatch, resetDemo } = useStore()
+  const { mode } = useAuth()
   const [draft, setDraft] = useState<SettingsT>(state.settings)
   const [confirmReset, setConfirmReset] = useState(false)
   const [showAll, setShowAll] = useState(false)
@@ -87,7 +89,7 @@ export function Settings() {
               <li key={u.id} className="flex items-center justify-between gap-3 rounded-xl border border-line p-3">
                 <div>
                   <div className="font-semibold">{u.name}</div>
-                  <div className="text-xs text-muted">{u.title}</div>
+                  <div className="text-xs text-muted">{u.email}</div>
                 </div>
                 <span
                   className={cx(
@@ -111,6 +113,13 @@ export function Settings() {
               <dd className="mt-1 text-ink-2">Change fees and settings, confirm payouts, see this page and the activity log.</dd>
             </div>
           </dl>
+          <p className="mt-4 text-sm text-ink-2">
+            {mode === 'google' ? (
+              <>Team members sign in with Google. Who’s on the team is set by <code>VITE_STAFF_EMAILS</code>; everyone else who signs in is a customer.</>
+            ) : (
+              <>Demo mode: sign-in uses demo Google accounts. To switch on real Google login, follow <code>docs/google-login.md</code>.</>
+            )}
+          </p>
           <div className="mt-4 border-t border-line pt-4">
             <Button variant="danger" onClick={() => setConfirmReset(true)}>
               <RotateCcw size={14} aria-hidden /> Reset demo data

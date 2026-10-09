@@ -17,7 +17,7 @@ import type {
   Thread,
 } from './types'
 
-export const STATE_VERSION = 2
+export const STATE_VERSION = 3
 
 const OWNER = 'u-owner'
 const PARTNER = 'u-partner'
@@ -164,7 +164,7 @@ class Gen {
         name,
         instagram: hasIg ? `@${first.toLowerCase()}.${last.toLowerCase().slice(0, 4)}` : undefined,
         phone: this.chance(0.8) ? this.phone() : undefined,
-        email: this.chance(0.3) ? `${first.toLowerCase()}.${last.toLowerCase()}@gmail.com` : undefined,
+        email: this.chance(0.3) ? `${first.toLowerCase()}.${last.toLowerCase()}@example.com` : undefined,
         notes,
         tags: [],
         createdAt: this.at(daysAgo).toISOString(),
@@ -282,7 +282,7 @@ class Gen {
     const brian = person('Brian Mwangi', { phone: this.phone() }, 260)
     const faith = person(
       'Faith Njeri',
-      { instagram: '@faith.njeri', phone: this.phone(), notes: 'Prefers soft pink tulips. Usually orders for her sister’s birthday.', tags: ['Repeat', 'VIP'] },
+      { instagram: '@faith.njeri', phone: this.phone(), email: 'faith.njeri@example.com', address: 'Kileleshwa, Nairobi', notes: 'Prefers soft pink tulips. Usually orders for her sister’s birthday.', tags: ['Repeat', 'VIP'] },
       60 * 24 * 70,
     )
     const kevin = person('Kevin Odhiambo', { phone: this.phone() }, 300)
@@ -290,7 +290,7 @@ class Gen {
     const amina = person('Amina Hassan', { instagram: '@amina.h', phone: this.phone() }, 60 * 24 * 4)
     const grace = person(
       'Grace Mutua',
-      { phone: this.phone(), email: 'grace.mutua@gmail.com', notes: 'Office events — asks for formal receipts.', tags: ['Corporate'] },
+      { phone: this.phone(), email: 'grace.mutua@example.com', notes: 'Office events — asks for formal receipts.', tags: ['Corporate'] },
       60 * 24 * 5,
     )
 

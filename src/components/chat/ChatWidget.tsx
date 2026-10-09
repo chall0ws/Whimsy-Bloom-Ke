@@ -49,13 +49,33 @@ export function customerUnread(thread: Thread | undefined): number {
 
 const STARTERS = ['I’d like to order a bouquet', 'How much is delivery?', 'Can you do custom colours?']
 
+export interface ChatIdentity {
+  customerId: string
+  name: string
+  phone: string
+}
+
 /**
- * Customer-facing live chat. Used full-page (the link in her bio) and as the
- * pop-up on the order form.
+ * Customer-facing live chat. Used full-page (the link in her bio), as the pop-up on
+ * the order form, and inside the client portal, where `identity` comes from the
+ * signed-in account so customers don't type their details again.
  */
-export function ChatWidget({ startedFrom, onClose, className }: { startedFrom: Thread['startedFrom']; onClose?: () => void; className?: string }) {
+export function ChatWidget({
+  startedFrom,
+  onClose,
+  className,
+  identity,
+  initialText,
+}: {
+  startedFrom: Thread['startedFrom']
+  onClose?: () => void
+  className?: string
+  identity?: ChatIdentity
+  initialText?: string
+}) {
   const { state } = useStore()
-  const [thread, setThreadId] = useMyThread()
+  const [myThread, setThreadId] = useMyThread()
+  const thread = identity ? state.threads.find((t) => t.customerId === identity.customerId) : myThread
   const online = state.chatStatus === 'ONLINE'
 
   return (
@@ -78,7 +98,9 @@ export function ChatWidget({ startedFrom, onClose, className }: { startedFrom: T
         )}
       </header>
       {thread ? (
-        <Conversation thread={thread} onReset={() => setThreadId(null)} />
+        <Conversation key={initialText} thread={thread} onReset={identity ? undefined : () => setThreadId(null)} initialText={initialText} />
+      ) : identity ? (
+        <FirstMessage identity={identity} startedFrom={startedFrom} initialText={initialText} />
       ) : (
         <StartChat startedFrom={startedFrom} onStarted={(id) => setThreadId(id)} />
       )}
@@ -130,9 +152,67 @@ function StartChat({ startedFrom, onStarted }: { startedFrom: Thread['startedFro
   )
 }
 
-function Conversation({ thread, onReset }: { thread: Thread; onReset: () => void }) {
+/** A signed-in customer's first message starts the chat with the details from their account. */
+function FirstMessage({ identity, startedFrom, initialText = '' }: { identity: ChatIdentity; startedFrom: Thread['startedFrom']; initialText?: string }) {
   const { dispatch } = useStore()
-  const [text, setText] = useState('')
+  const [text, setText] = useState(initialText)
+  const send = () => dispatch({ type: 'CUSTOMER_START_CHAT', name: identity.name, phone: identity.phone, text, startedFrom })
+  return (
+    <>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 py-8 text-center">
+        <BloomMark size={44} />
+        <p className="font-display text-xl font-semibold">Hi {identity.name.split(' ')[0]}!</p>
+        <p className="max-w-xs text-sm text-muted">Ask about bouquets, colours, prices or an order. We’ll reply right here.</p>
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {STARTERS.map((s) => (
+            <button key={s} type="button" onClick={() => setText(s)} className="rounded-full border border-line-strong px-3 py-1 text-xs text-ink-2 hover:bg-surface-2">
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+      <Composer text={text} setText={setText} onSend={send} />
+    </>
+  )
+}
+
+function Composer({ text, setText, onSend, onTyping }: { text: string; setText: (t: string) => void; onSend: () => void; onTyping?: () => void }) {
+  return (
+    <form
+      className="flex items-end gap-2 border-t border-line p-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSend()
+      }}
+    >
+      <textarea
+        id="chat-reply"
+        className={cx(inputClass, 'max-h-28 min-h-10 resize-none')}
+        rows={1}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value)
+          onTyping?.()
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            onSend()
+          }
+        }}
+        placeholder="Type a message…"
+        aria-label="Message"
+      />
+      <Button type="submit" variant="primary" className="!h-10 !w-10 !px-0" aria-label="Send">
+        <Send size={16} />
+      </Button>
+    </form>
+  )
+}
+
+function Conversation({ thread, onReset, initialText = '' }: { thread: Thread; onReset?: () => void; initialText?: string }) {
+  const { dispatch } = useStore()
+  const [text, setText] = useState(initialText)
   const end = useRef<HTMLDivElement>(null)
   const live = useLiveSignals()
   const notifyTyping = useMemo(() => makeTypingNotifier(thread.id, 'customer'), [thread.id])
@@ -168,38 +248,12 @@ function Conversation({ thread, onReset }: { thread: Thread; onReset: () => void
         {live.isTyping(thread.id, 'shop') && <div className="text-xs italic text-muted">Whimsy &amp; Bloom is typing…</div>}
         <div ref={end} />
       </div>
-      <form
-        className="flex items-end gap-2 border-t border-line p-3"
-        onSubmit={(e) => {
-          e.preventDefault()
-          send()
-        }}
-      >
-        <textarea
-          id="chat-reply"
-          className={cx(inputClass, 'max-h-28 min-h-10 resize-none')}
-          rows={1}
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value)
-            notifyTyping()
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              send()
-            }
-          }}
-          placeholder="Type a message…"
-          aria-label="Message"
-        />
-        <Button type="submit" variant="primary" className="!h-10 !w-10 !px-0" aria-label="Send">
-          <Send size={16} />
-        </Button>
-      </form>
-      <button type="button" onClick={onReset} className="pb-2 text-center text-[11px] text-muted hover:text-ink">
-        Not you? Start a new chat
-      </button>
+      <Composer text={text} setText={setText} onSend={send} onTyping={notifyTyping} />
+      {onReset && (
+        <button type="button" onClick={onReset} className="pb-2 text-center text-[11px] text-muted hover:text-ink">
+          Not you? Start a new chat
+        </button>
+      )}
     </>
   )
 }

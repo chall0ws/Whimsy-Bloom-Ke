@@ -2,6 +2,7 @@ import { CircleCheck, MessageCircle, Smartphone } from 'lucide-react'
 import { ChatWidget, customerUnread, useMyThread } from '../components/chat/ChatWidget'
 import { useEffect, useState } from 'react'
 import { BloomMark, Logo } from '../components/Logo'
+import { TeamPreviewBar } from '../components/TeamPreviewBar'
 import { Button, cx, Field, inputClass } from '../components/ui'
 import { formatKES } from '../domain/format'
 import type { FulfilmentMethod } from '../domain/types'
@@ -35,7 +36,7 @@ export function OrderForm() {
     if (step !== 'paying') return
     const timer = setTimeout(() => {
       const r = dispatch({
-        type: 'CREATE_ORDER',
+        type: 'CUSTOMER_PLACE_ORDER',
         draft: {
           customerName: name,
           phone,
@@ -75,16 +76,20 @@ export function OrderForm() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="mb-4 rounded-xl bg-surface-2 px-4 py-2.5 text-xs text-ink-2">
-        <strong>Preview:</strong> this is the customer page linked in her bios. Orders placed here appear in Order Management as <em>Web Form</em>. Payment is simulated. The chat
-        button in the corner opens live chat.
+    <div className="mx-auto max-w-2xl px-4 py-6">
+      <div className="mb-4">
+        <TeamPreviewBar back="#/orders">
+          The page linked in her bios. Orders placed here appear as <em>Web Form</em>. Payment is simulated.
+        </TeamPreviewBar>
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-card">
         <div className="bg-pink-wash px-6 py-8 text-center">
           <Logo className="justify-center" />
           <p className="mt-3 text-sm text-ink-2">Handmade flowers that never wilt. Order below and we’ll take it from here.</p>
+          <a href="#/portal" className="mt-2 inline-block text-xs font-medium text-pink-ink hover:underline">
+            Ordered before? Sign in with Google to track your orders
+          </a>
         </div>
 
         {step === 'form' && (
@@ -205,8 +210,8 @@ export function OrderForm() {
               Order <strong className="text-ink">{orderNumber}</strong> is paid and in the queue. We’ll message you when it ships.
             </p>
             <div className="mt-2 flex flex-wrap justify-center gap-2">
-              <a href="#/orders" className="inline-flex h-10 items-center rounded-full bg-green px-4 text-sm font-medium text-on-green">
-                See it in Order Management
+              <a href="#/portal" className="inline-flex h-10 items-center rounded-full bg-green px-4 text-sm font-medium text-on-green">
+                Track it with Google sign-in
               </a>
               <Button onClick={reset}>Place another</Button>
             </div>

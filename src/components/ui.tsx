@@ -1,4 +1,4 @@
-import { CircleCheck, Globe, MessageCircle, Phone, TriangleAlert, X } from 'lucide-react'
+import { CircleCheck, CircleUserRound, Globe, MessageCircle, Phone, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { STATUS_LABEL } from '../domain/orders'
 import type { Channel, OrderStatus } from '../domain/types'
@@ -90,6 +90,7 @@ export function StatusChip({ status, className }: { status: OrderStatus; classNa
 export function ChannelIcon({ channel, size = 14 }: { channel: Channel; size?: number }) {
   if (channel === 'LIVE_CHAT') return <MessageCircle size={size} aria-hidden />
   if (channel === 'MANUAL') return <Phone size={size} aria-hidden />
+  if (channel === 'PORTAL') return <CircleUserRound size={size} aria-hidden />
   return <Globe size={size} aria-hidden />
 }
 

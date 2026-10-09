@@ -10,6 +10,9 @@ export type Route =
   | { page: 'settings' }
   | { page: 'order-form' }
   | { page: 'chat' }
+  | { page: 'portal'; tab?: PortalTab }
+
+export type PortalTab = 'orders' | 'new' | 'chat' | 'profile'
 
 export function parseHash(hash: string): Route {
   const [page, id] = hash.replace(/^#\/?/, '').split('/')
@@ -25,6 +28,8 @@ export function parseHash(hash: string): Route {
       return { page, threadId: id || undefined }
     case 'customers':
       return { page, customerId: id || undefined }
+    case 'portal':
+      return { page, tab: (['orders', 'new', 'chat', 'profile'] as const).find((t) => t === id) }
     default:
       return { page: 'overview' }
   }
@@ -38,6 +43,8 @@ export function href(route: Route): string {
       return route.threadId ? `#/inbox/${route.threadId}` : '#/inbox'
     case 'customers':
       return route.customerId ? `#/customers/${route.customerId}` : '#/customers'
+    case 'portal':
+      return route.tab ? `#/portal/${route.tab}` : '#/portal'
     default:
       return `#/${route.page}`
   }

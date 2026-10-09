@@ -6,6 +6,7 @@ import type {
   Channel,
   ChatStatus,
   Customer,
+  Role,
   FulfilmentMethod,
   MaterialMovement,
   Order,
@@ -47,16 +48,21 @@ export type Action =
   | { type: 'RECORD_PAYOUT'; amount: number; reference: string }
   | { type: 'CONFIRM_PAYOUT'; payoutId: string }
   | { type: 'UPDATE_SETTINGS'; patch: Partial<Settings> }
-  | { type: 'SWITCH_USER'; userId: string }
   | { type: 'SET_CHAT_STATUS'; status: ChatStatus }
-  // Customer-side live chat. These run as the customer, not as a signed-in user.
+  // Sign-in. The auth layer has already checked the Google account and its role.
+  | { type: 'SIGN_IN_STAFF'; email: string; name: string; role: Role }
+  | { type: 'SIGN_OUT' }
+  // Customer side: live chat, order form and client portal. These run as the customer, not as a team member.
   | { type: 'CUSTOMER_START_CHAT'; name: string; phone: string; email?: string; startedFrom: Thread['startedFrom']; text?: string }
   | { type: 'CUSTOMER_SEND_MESSAGE'; threadId: string; text: string }
   | { type: 'CUSTOMER_READ'; threadId: string }
-  | { type: 'CUSTOMER_PAY'; orderId: string; reference: string }
+  | { type: 'CUSTOMER_PAY'; orderId: string; reference: string; customerId?: string }
+  | { type: 'CUSTOMER_PLACE_ORDER'; draft: OrderDraft }
+  | { type: 'CUSTOMER_LINK_ACCOUNT'; email: string; name: string; phone: string; address?: string }
+  | { type: 'CUSTOMER_UPDATE_PROFILE'; customerId: string; email: string; patch: Partial<Pick<Customer, 'name' | 'phone' | 'address'>> }
 
 export type ActionResult =
-  | { ok: true; state: AppState; notices: string[]; createdOrderId?: string; threadId?: string }
+  | { ok: true; state: AppState; notices: string[]; createdOrderId?: string; threadId?: string; customerId?: string }
   | { ok: false; error: string }
 
 /** Author id for messages the system sends on her behalf (greeting, away reply). */
@@ -69,9 +75,13 @@ const SUPER_ADMIN_ONLY: Action['type'][] = ['UPDATE_SETTINGS', 'CONFIRM_PAYOUT']
  * Applies one user action to the state. Pure: the same state, action and time
  * always give the same result, which is what the tests rely on.
  */
+const NO_TEAM_MEMBER_NEEDED: Action['type'][] = ['SIGN_IN_STAFF', 'SIGN_OUT']
+
 export function applyAction(state: AppState, action: Action, now: Date): ActionResult {
   let actor = CUSTOMER_ACTOR
-  if (!action.type.startsWith('CUSTOMER_')) {
+  if (NO_TEAM_MEMBER_NEEDED.includes(action.type)) {
+    actor = state.currentUserId
+  } else if (!action.type.startsWith('CUSTOMER_')) {
     const user = state.users.find((u) => u.id === state.currentUserId)
     if (!user) return fail('No signed-in user.')
     if (SUPER_ADMIN_ONLY.includes(action.type) && user.role !== 'SUPER_ADMIN') {
@@ -82,7 +92,7 @@ export function applyAction(state: AppState, action: Action, now: Date): ActionR
   const tx = new Tx(state, now, actor)
   const error = run(tx, action)
   if (error) return fail(error)
-  return { ok: true, state: tx.state, notices: tx.notices, createdOrderId: tx.createdOrderId, threadId: tx.threadId }
+  return { ok: true, state: tx.state, notices: tx.notices, createdOrderId: tx.createdOrderId, threadId: tx.threadId, customerId: tx.customerId }
 }
 
 function fail(error: string): ActionResult {
@@ -94,6 +104,7 @@ class Tx {
   notices: string[] = []
   createdOrderId?: string
   threadId?: string
+  customerId?: string
   readonly at: string
 
   constructor(
@@ -241,11 +252,19 @@ function run(tx: Tx, action: Action): string | undefined {
       tx.audit(`Updated settings: ${describeSettingsChange(action.patch)}`)
       return
     }
-    case 'SWITCH_USER': {
-      if (!tx.state.users.some((u) => u.id === action.userId)) return 'Unknown user.'
-      tx.state = { ...tx.state, currentUserId: action.userId }
+    case 'SIGN_IN_STAFF': {
+      const email = action.email.trim().toLowerCase()
+      if (!email) return 'Missing email.'
+      const existing = tx.state.users.find((u) => u.email.toLowerCase() === email)
+      const title = action.role === 'SUPER_ADMIN' ? 'Super admin · Platform partner' : 'Admin · Whimsy & Bloom'
+      const user = existing ? { ...existing, role: action.role, title } : { id: tx.id('u'), name: action.name.trim() || email, email, role: action.role, title }
+      const users = existing ? tx.state.users.map((u) => (u.id === user.id ? user : u)) : [...tx.state.users, user]
+      tx.state = { ...tx.state, users, currentUserId: user.id }
       return
     }
+    case 'SIGN_OUT':
+      tx.state = { ...tx.state, currentUserId: '' }
+      return
     case 'SET_CHAT_STATUS':
       tx.state = { ...tx.state, chatStatus: action.status }
       tx.notices.push(action.status === 'ONLINE' ? 'You’re online. Customers see that you reply quickly.' : 'You’re away. New chats get an automatic reply.')
@@ -263,9 +282,68 @@ function run(tx: Tx, action: Action): string | undefined {
       tx.putThread({ ...thread, customerReadAt: tx.at })
       return
     }
-    case 'CUSTOMER_PAY':
+    case 'CUSTOMER_PAY': {
+      const order = tx.order(action.orderId)
+      if (action.customerId && order?.customerId !== action.customerId) return 'Order not found.'
       return confirmPayment(tx, action.orderId, 'MPESA', action.reference)
+    }
+    case 'CUSTOMER_PLACE_ORDER': {
+      if (action.draft.channel !== 'WEB_FORM' && action.draft.channel !== 'PORTAL') return 'Customers can only order from the order form or the portal.'
+      if (action.draft.customerId) {
+        // A signed-in customer can only order for themselves.
+        const customer = tx.state.customers.find((c) => c.id === action.draft.customerId)
+        if (!customer) return 'Your account wasn’t found. Please sign in again.'
+      }
+      return createOrder(tx, action.draft)
+    }
+    case 'CUSTOMER_LINK_ACCOUNT':
+      return linkAccount(tx, action)
+    case 'CUSTOMER_UPDATE_PROFILE': {
+      const customer = tx.state.customers.find((c) => c.id === action.customerId)
+      if (!customer || customer.email?.toLowerCase() !== action.email.trim().toLowerCase()) return 'You can only change your own details.'
+      const patch = { ...action.patch }
+      if (patch.name !== undefined && !patch.name.trim()) return 'Please add your name.'
+      if (patch.phone !== undefined && digits(patch.phone).length < 9) return 'Please add a phone number we can reach you on.'
+      tx.state = { ...tx.state, customers: tx.state.customers.map((c) => (c.id === customer.id ? { ...c, ...patch } : c)) }
+      tx.customerId = customer.id
+      return
+    }
   }
+}
+
+/**
+ * Connects a Google account to a customer record: by email if we know it, otherwise by phone
+ * number (so past chats and orders carry over), otherwise as a new customer.
+ */
+function linkAccount(tx: Tx, a: Extract<Action, { type: 'CUSTOMER_LINK_ACCOUNT' }>) {
+  const email = a.email.trim().toLowerCase()
+  if (!email.includes('@')) return 'Sign in again to continue.'
+  const byEmail = tx.state.customers.find((c) => c.email?.toLowerCase() === email)
+  if (byEmail) {
+    tx.customerId = byEmail.id
+    return
+  }
+  if (!a.name.trim()) return 'Please add your name.'
+  if (digits(a.phone).length < 9) return 'Please add a phone number we can reach you on.'
+  const byPhone = tx.state.customers.find((c) => c.phone && digits(c.phone) === digits(a.phone) && !c.email)
+  if (byPhone) {
+    const linked = { ...byPhone, email, address: byPhone.address ?? (a.address?.trim() || undefined) }
+    tx.state = { ...tx.state, customers: tx.state.customers.map((c) => (c.id === byPhone.id ? linked : c)) }
+    tx.customerId = byPhone.id
+    return
+  }
+  const customer: Customer = {
+    id: tx.id('c'),
+    name: a.name.trim(),
+    phone: a.phone.trim(),
+    email,
+    address: a.address?.trim() || undefined,
+    notes: '',
+    tags: [],
+    createdAt: tx.at,
+  }
+  tx.state = { ...tx.state, customers: [...tx.state.customers, customer] }
+  tx.customerId = customer.id
 }
 
 const digits = (s?: string) => (s ?? '').replace(/\D/g, '').slice(-9)
@@ -468,7 +546,7 @@ function createOrder(tx: Tx, draft: OrderDraft) {
   }
   if (draft.payment.kind === 'PAID' && !draft.payment.reference.trim()) return 'Add the payment reference.'
 
-  const actor = draft.channel === 'WEB_FORM' ? CUSTOMER_ACTOR : tx.actor
+  const actor = tx.actor
   const customerId = upsertCustomer(tx, draft)
   const paid = draft.payment.kind === 'PAID'
   const number = `WB-${tx.state.nextOrderNumber}`
@@ -502,7 +580,7 @@ function createOrder(tx: Tx, draft: OrderDraft) {
   }
   tx.state = { ...tx.state, orders: [order, ...tx.state.orders], nextOrderNumber: tx.state.nextOrderNumber + 1 }
   tx.createdOrderId = order.id
-  const via = draft.channel === 'WEB_FORM' ? 'web form' : draft.channel === 'LIVE_CHAT' ? 'live chat' : 'phone / in person'
+  const via = { WEB_FORM: 'web form', PORTAL: 'client portal', LIVE_CHAT: 'live chat', MANUAL: 'phone / in person' }[order.channel]
   tx.audit(`${number}: created from ${via} for ${draft.customerName.trim()} (${formatKES(orderTotal(order))})`, actor)
   tx.notices.push(`Order ${number} created.`)
   if (draft.payment.kind === 'SEND_LINK') sendPaymentLink(tx, order.id)

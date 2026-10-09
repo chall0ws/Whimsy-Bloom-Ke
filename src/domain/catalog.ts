@@ -1,8 +1,8 @@
 import type { Material, Product, Recipes, Settings, User } from './types'
 
 export const USERS: User[] = [
-  { id: 'u-partner', name: 'Partner', role: 'SUPER_ADMIN', title: 'Super admin · Platform partner' },
-  { id: 'u-owner', name: 'Owner', role: 'ADMIN', title: 'Admin · Whimsy & Bloom' },
+  { id: 'u-partner', name: 'Partner', email: 'partner@example.com', role: 'SUPER_ADMIN', title: 'Super admin · Platform partner' },
+  { id: 'u-owner', name: 'Owner', email: 'owner@example.com', role: 'ADMIN', title: 'Admin · Whimsy & Bloom' },
 ]
 
 export const PRODUCTS: Product[] = [

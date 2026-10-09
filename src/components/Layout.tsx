@@ -1,10 +1,11 @@
-import { Boxes, FileText, LayoutDashboard, Menu, MessageCircle, MessagesSquare, Monitor, Moon, Settings, ShieldCheck, ShoppingBag, Sun, Users, Wallet, X } from 'lucide-react'
+import { Boxes, CircleUserRound, FileText, LayoutDashboard, LogOut, Menu, MessageCircle, MessagesSquare, Monitor, Moon, Settings, ShieldCheck, ShoppingBag, Sun, Users, Wallet, X } from 'lucide-react'
+import { useAuth } from '../auth/AuthProvider'
 import { useEffect, useState, type ReactNode } from 'react'
 import { unreadTotals } from '../domain/metrics'
 import { href, type Route } from '../router'
 import { useStore } from '../state/store'
 import { Logo } from './Logo'
-import { cx, UnreadBadge } from './ui'
+import { Avatar, cx, UnreadBadge } from './ui'
 
 type NavItem = { route: Route; label: string; icon: typeof LayoutDashboard; badge?: number; superOnly?: boolean; customerPage?: boolean }
 
@@ -29,6 +30,7 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
     { route: { page: 'settings' }, label: 'Settings', icon: Settings, superOnly: true },
     { route: { page: 'order-form' }, label: 'Order form', icon: FileText, customerPage: true },
     { route: { page: 'chat' }, label: 'Chat page', icon: MessagesSquare, customerPage: true },
+    { route: { page: 'portal' }, label: 'Client portal', icon: CircleUserRound, customerPage: true },
   ]
 
   const sidebar = (
@@ -69,7 +71,7 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
       </ul>
       ))}
       <div className="mt-auto flex flex-col gap-3">
-        <RoleSwitcher />
+        <AccountCard />
         <ThemeToggle />
       </div>
     </nav>
@@ -106,26 +108,33 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
   )
 }
 
-function RoleSwitcher() {
-  const { state, user, dispatch } = useStore()
+function AccountCard() {
+  const { user, isSuperAdmin, dispatch } = useStore()
+  const { signOut } = useAuth()
   return (
     <div className="rounded-2xl border border-line bg-surface-2 p-3">
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
-        <ShieldCheck size={13} aria-hidden /> Signed in as
+      <div className="flex items-center gap-2.5">
+        <Avatar name={user.name} size={34} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold">{user.name}</div>
+          <div className="truncate text-[11px] text-muted">{user.email}</div>
+        </div>
       </div>
-      <select
-        value={user.id}
-        onChange={(e) => dispatch({ type: 'SWITCH_USER', userId: e.target.value })}
-        className="w-full rounded-lg border border-line-strong bg-surface px-2 py-1.5 text-sm font-medium"
-        aria-label="Switch user (demo)"
-      >
-        {state.users.map((u) => (
-          <option key={u.id} value={u.id}>
-            {u.name} · {u.role === 'SUPER_ADMIN' ? 'Super admin' : 'Admin'}
-          </option>
-        ))}
-      </select>
-      <p className="mt-1.5 text-[11px] leading-snug text-muted">Demo switcher. Real logins come in Stage B.</p>
+      <div className="mt-2.5 flex items-center justify-between gap-2">
+        <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', isSuperAdmin ? 'bg-green text-on-green' : 'bg-surface text-ink-2')}>
+          <ShieldCheck size={11} aria-hidden /> {isSuperAdmin ? 'Super admin' : 'Admin'}
+        </span>
+        <button
+          type="button"
+          onClick={async () => {
+            dispatch({ type: 'SIGN_OUT' })
+            await signOut()
+          }}
+          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-ink-2 hover:bg-surface hover:text-ink"
+        >
+          <LogOut size={13} aria-hidden /> Sign out
+        </button>
+      </div>
     </div>
   )
 }

@@ -1,14 +1,16 @@
 export type Role = 'SUPER_ADMIN' | 'ADMIN'
 
+/** A team member who signs in to the dashboard with their Google account. */
 export interface User {
   id: string
   name: string
+  email: string
   role: Role
   title: string
 }
 
-/** Where an order came from: a live chat, the web order form, or entered by hand (phone, in person). */
-export type Channel = 'LIVE_CHAT' | 'WEB_FORM' | 'MANUAL'
+/** Where an order came from: live chat, the web order form, the signed-in client portal, or entered by hand. */
+export type Channel = 'LIVE_CHAT' | 'WEB_FORM' | 'PORTAL' | 'MANUAL'
 
 /**
  * Order lifecycle:
@@ -105,7 +107,10 @@ export interface Customer {
   name: string
   instagram?: string
   phone?: string
+  /** Also the Google account they sign in to the client portal with. */
   email?: string
+  /** Default delivery address, saved from the client portal. */
+  address?: string
   notes: string
   tags: string[]
   createdAt: string
@@ -131,7 +136,7 @@ export interface Message {
 export interface Thread {
   id: string
   customerId: string
-  startedFrom: 'CHAT_LINK' | 'ORDER_FORM'
+  startedFrom: 'CHAT_LINK' | 'ORDER_FORM' | 'PORTAL'
   startedAt: string
   messages: Message[]
   /** Last time the customer looked at the conversation; shop messages before this show as "Seen". */

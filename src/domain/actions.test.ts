@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyAction, AUTO_REPLY, type Action, type OrderDraft } from './actions'
+import { parseStaffList, staffRoleFor } from './auth'
 import { DEFAULT_SETTINGS, MATERIALS, PRODUCTS, RECIPES, USERS } from './catalog'
 import { feeSummary } from './fees'
 import { netRevenue } from './orders'
@@ -7,6 +8,7 @@ import { createSeedState } from './seed'
 import type { AppState } from './types'
 
 const NOW = new Date('2026-10-09T12:00:00+03:00')
+const SIGN_IN_PARTNER: Action = { type: 'SIGN_IN_STAFF', email: 'Partner@Example.com', name: 'Partner', role: 'SUPER_ADMIN' }
 
 function emptyState(overrides: Partial<AppState> = {}): AppState {
   return {
@@ -180,14 +182,14 @@ describe('service fee', () => {
     const hand = createPaidOrder(emptyState(), { method: 'HAND_DELIVERY' })
     expect(applyAll(hand.state, ship(hand.orderId)).fees).toHaveLength(1)
 
-    let state = apply(emptyState(), { type: 'SWITCH_USER', userId: 'u-partner' })
+    let state = apply(emptyState(), SIGN_IN_PARTNER)
     state = apply(state, { type: 'UPDATE_SETTINGS', patch: { feeOnHandDelivery: false } })
     const created = createPaidOrder(state, { method: 'HAND_DELIVERY' })
     expect(applyAll(created.state, ship(created.orderId)).fees).toHaveLength(0)
   })
 
   it('uses the fee rate in force when the order ships', () => {
-    let state = apply(emptyState(), { type: 'SWITCH_USER', userId: 'u-partner' })
+    let state = apply(emptyState(), SIGN_IN_PARTNER)
     state = apply(state, { type: 'UPDATE_SETTINGS', patch: { serviceFee: 150 } })
     const created = createPaidOrder(state)
     expect(applyAll(created.state, ship(created.orderId)).fees[0].amount).toBe(150)
@@ -221,7 +223,7 @@ describe('payouts', () => {
   it('only reduces the balance once the super admin confirms receipt', () => {
     let state = apply(withFees(), { type: 'RECORD_PAYOUT', amount: 200, reference: 'sxy1' })
     expect(feeSummary(state)).toMatchObject({ collected: 300, inTransit: 200, payable: 300, availableToSend: 100 })
-    state = apply(state, { type: 'SWITCH_USER', userId: 'u-partner' })
+    state = apply(state, SIGN_IN_PARTNER)
     state = apply(state, { type: 'CONFIRM_PAYOUT', payoutId: state.payouts[0].id })
     expect(feeSummary(state)).toMatchObject({ paidOut: 200, inTransit: 0, payable: 100 })
   })
@@ -325,6 +327,78 @@ describe('live chat (customer side)', () => {
   it('records when the customer has seen the shop’s replies', () => {
     const state = apply(emptyState(), { type: 'CUSTOMER_READ', threadId: 't-1' })
     expect(state.threads[0].customerReadAt).toBe(NOW.toISOString())
+  })
+})
+
+describe('sign-in and roles', () => {
+  it('reads the team list from configuration', () => {
+    const staff = parseStaffList(' You@Gmail.com:super_admin, her@gmail.com , broken ,x@y.com:ADMIN')
+    expect([...staff.entries()]).toEqual([
+      ['you@gmail.com', 'SUPER_ADMIN'],
+      ['her@gmail.com', 'ADMIN'],
+      ['x@y.com', 'ADMIN'],
+    ])
+    expect(staffRoleFor('HER@gmail.com', staff, USERS)).toBe('ADMIN')
+    expect(staffRoleFor('owner@example.com', new Map(), USERS)).toBe('ADMIN')
+    expect(staffRoleFor('customer@example.com', staff, USERS)).toBeNull()
+  })
+
+  it('signs a team member in, adding them to the team on first sign-in', () => {
+    let state = apply(emptyState({ currentUserId: '' }), { type: 'SIGN_IN_STAFF', email: 'her@gmail.com', name: 'Her', role: 'ADMIN' })
+    const user = state.users.find((u) => u.email === 'her@gmail.com')!
+    expect(state.currentUserId).toBe(user.id)
+    expect(applyAction(state, { type: 'UPDATE_SETTINGS', patch: { serviceFee: 50 } }, NOW).ok).toBe(false)
+    state = apply(state, { type: 'SIGN_OUT' })
+    expect(applyAction(state, { type: 'SET_CHAT_STATUS', status: 'AWAY' }, NOW).ok).toBe(false)
+  })
+})
+
+describe('client portal', () => {
+  const link = (state: AppState, extra: Partial<Extract<Action, { type: 'CUSTOMER_LINK_ACCOUNT' }>> = {}) => {
+    const result = applyAction(state, { type: 'CUSTOMER_LINK_ACCOUNT', email: 'joy@example.com', name: 'Joy Wairimu', phone: '0712 345 678', ...extra }, NOW)
+    if (!result.ok) throw new Error(result.error)
+    return { state: result.state, customerId: result.customerId! }
+  }
+
+  it('creates a customer for a new Google account', () => {
+    const { state, customerId } = link(emptyState({ currentUserId: '' }))
+    expect(state.customers.find((c) => c.id === customerId)).toMatchObject({ email: 'joy@example.com', phone: '0712 345 678' })
+  })
+
+  it('links to the existing customer with the same phone, keeping their history', () => {
+    const chat = applyAction(emptyState(), { type: 'CUSTOMER_START_CHAT', name: 'Joy', phone: '+254712345678', startedFrom: 'CHAT_LINK' }, NOW)
+    if (!chat.ok) throw new Error(chat.error)
+    const { state, customerId } = link(chat.state)
+    expect(state.customers).toHaveLength(1)
+    expect(state.threads.find((t) => t.customerId === customerId)).toBeDefined()
+    // Signing in again finds them by email, with no phone needed.
+    expect(link(state, { phone: '' }).customerId).toBe(customerId)
+  })
+
+  it('places a portal order as the customer, and only lets them pay their own orders', () => {
+    const { state: linked, customerId } = link(emptyState({ currentUserId: '' }))
+    const placed = applyAction(
+      linked,
+      { type: 'CUSTOMER_PLACE_ORDER', draft: draft({ channel: 'PORTAL', threadId: undefined, customerId, customerName: 'Joy Wairimu', payment: { kind: 'UNPAID' } }) },
+      NOW,
+    )
+    if (!placed.ok) throw new Error(placed.error)
+    const order = placed.state.orders[0]
+    expect(order).toMatchObject({ channel: 'PORTAL', customerId, status: 'PENDING_PAYMENT' })
+    expect(order.history[0].by).toBe('customer')
+    expect(applyAction(placed.state, { type: 'CUSTOMER_PAY', orderId: order.id, reference: 'X1', customerId: 'someone-else' }, NOW).ok).toBe(false)
+    expect(applyAction(placed.state, { type: 'CUSTOMER_PAY', orderId: order.id, reference: 'X1', customerId }, NOW).ok).toBe(true)
+  })
+
+  it('does not let customers create orders as live chat or manual orders', () => {
+    expect(applyAction(emptyState(), { type: 'CUSTOMER_PLACE_ORDER', draft: draft({ channel: 'MANUAL', threadId: undefined }) }, NOW).ok).toBe(false)
+  })
+
+  it('only lets a customer edit their own profile', () => {
+    const { state, customerId } = link(emptyState())
+    expect(applyAction(state, { type: 'CUSTOMER_UPDATE_PROFILE', customerId, email: 'other@example.com', patch: { name: 'X' } }, NOW).ok).toBe(false)
+    const updated = apply(state, { type: 'CUSTOMER_UPDATE_PROFILE', customerId, email: 'joy@example.com', patch: { address: 'Thika' } })
+    expect(updated.customers[0].address).toBe('Thika')
   })
 })
 

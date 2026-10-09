@@ -43,11 +43,12 @@ function readStored(): AppState | null {
 }
 
 function loadState(now: Date): AppState {
-  return readStored() ?? createSeedState(now)
+  // Nobody is signed in until the sign-in check says so, whatever the last tab saved.
+  return { ...(readStored() ?? createSeedState(now)), currentUserId: '' }
 }
 
-/** The customer chat page doesn't show staff notifications. */
-const onCustomerPage = () => /^#\/?chat/.test(window.location.hash)
+/** Customer-facing pages don't show team notifications. */
+const onCustomerPage = () => /^#\/?(chat|portal|order-form)/.test(window.location.hash)
 
 function saveState(state: AppState) {
   try {
@@ -139,7 +140,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [toast])
 
   const value = useMemo<Store>(() => {
-    const user = state.users.find((u) => u.id === state.currentUserId) ?? state.users[0]
+    const user = state.users.find((u) => u.id === state.currentUserId) ?? { id: '', name: '', email: '', role: 'ADMIN' as const, title: '' }
     return {
       state,
       now,
