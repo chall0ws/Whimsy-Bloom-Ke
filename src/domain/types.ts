@@ -7,9 +7,8 @@ export interface User {
   title: string
 }
 
-/** Where an order or conversation came from. */
-export type Channel = 'INSTAGRAM' | 'FACEBOOK' | 'WEB_FORM'
-export type DmChannel = Exclude<Channel, 'WEB_FORM'>
+/** Where an order came from: a live chat, the web order form, or entered by hand (phone, in person). */
+export type Channel = 'LIVE_CHAT' | 'WEB_FORM' | 'MANUAL'
 
 /**
  * Order lifecycle:
@@ -89,7 +88,6 @@ export interface Order {
   number: string
   customerId: string
   channel: Channel
-  sourceHandle?: string
   threadId?: string
   items: OrderItem[]
   customisation: string
@@ -106,7 +104,6 @@ export interface Customer {
   id: string
   name: string
   instagram?: string
-  facebook?: string
   phone?: string
   email?: string
   notes: string
@@ -121,18 +118,27 @@ export interface Message {
   from: MessageSender
   text: string
   at: string
+  /** For customer messages: has the shop read it. */
   read: boolean
   /** User id of the shop member who sent it, for SHOP messages. */
   by?: string
+  /** A payment-link message renders as a "Pay with M-Pesa" card in the customer's chat. */
+  kind?: 'PAYMENT_LINK'
+  orderId?: string
 }
 
+/** A live-chat conversation started by a customer from the chat page or the order form. */
 export interface Thread {
   id: string
-  channel: DmChannel
   customerId: string
-  handle: string
+  startedFrom: 'CHAT_LINK' | 'ORDER_FORM'
+  startedAt: string
   messages: Message[]
+  /** Last time the customer looked at the conversation; shop messages before this show as "Seen". */
+  customerReadAt?: string
 }
+
+export type ChatStatus = 'ONLINE' | 'AWAY'
 
 /** One service-fee charge. Written once when an order ships and never removed. */
 export interface FeeEntry {
@@ -196,6 +202,8 @@ export interface AppState {
   movements: MaterialMovement[]
   audit: AuditEvent[]
   settings: Settings
+  /** Whether she's answering chats right now. Customers see this; when away they get an automatic reply. */
+  chatStatus: ChatStatus
   nextOrderNumber: number
   nextId: number
 }

@@ -131,7 +131,7 @@ function ShipDialog({ order, open, onClose }: { order: Order; open: boolean; onC
           Service and delivery fees are non-refundable.
         </Notice>
         <p className="text-sm text-muted">
-          {order.threadId ? 'The customer gets a shipping confirmation in their DMs.' : 'The customer gets a shipping confirmation by SMS and email.'}
+          {order.threadId ? 'The customer gets a shipping confirmation in their live chat.' : 'The customer gets a shipping confirmation by SMS and email.'}
         </p>
       </div>
     </Modal>
@@ -221,7 +221,7 @@ export function OrderTable({ orders, compact, emptyText = 'No orders here yet.' 
                 <td className="py-2.5 pr-3 align-middle">
                   <span className="inline-flex items-center gap-1.5 text-ink-2">
                     <ChannelIcon channel={o.channel} />
-                    <span className="max-w-[150px] truncate">{sourceLabel(o)}</span>
+                    <span className="max-w-[150px] truncate">{sourceLabel(state, o)}</span>
                   </span>
                 </td>
                 <td className="py-2.5 pr-3 align-middle">
@@ -248,7 +248,7 @@ export function OrderTable({ orders, compact, emptyText = 'No orders here yet.' 
                 <div className="truncate text-sm">{orderSummary(state, o)}</div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
                   <ChannelIcon channel={o.channel} size={12} />
-                  {sourceLabel(o)}
+                  {sourceLabel(state, o)}
                 </div>
                 {o.id === next?.id && <div className="text-[11px] font-semibold text-pink-ink">● Next up — oldest pending</div>}
               </div>
@@ -280,7 +280,7 @@ export function OrderDrawer() {
       variant="drawer"
       onClose={close}
       title={order.number}
-      subtitle={`Placed ${formatDateTime(order.createdAt)} · ${sourceLabel(order)}`}
+      subtitle={`Placed ${formatDateTime(order.createdAt)} · ${sourceLabel(state, order)}`}
       footer={
         <>
           {['PENDING_PAYMENT', 'PENDING', 'PROCESSING'].includes(order.status) && (
@@ -435,15 +435,14 @@ export function OrderDrawer() {
   )
 }
 
-/** Turns a DM conversation (or a phone call) into an official order. */
+/** Turns a live chat (or a phone call) into an official order. */
 export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; onClose: () => void; thread?: Thread }) {
   const { state, dispatch, openOrder } = useStore()
   const customer = thread ? state.customers.find((c) => c.id === thread.customerId) : undefined
   const lastCustomerText = thread?.messages.filter((m) => m.from === 'CUSTOMER').at(-1)?.text ?? ''
 
-  const [channel, setChannel] = useState<Channel>(thread?.channel ?? 'INSTAGRAM')
+  const [channel, setChannel] = useState<Channel>(thread ? 'LIVE_CHAT' : 'MANUAL')
   const [name, setName] = useState(customer?.name ?? '')
-  const [handle, setHandle] = useState(thread?.handle ?? '')
   const [phone, setPhone] = useState(customer?.phone ?? '')
   const [items, setItems] = useState([{ productId: state.products[0].id, qty: 1 }])
   const [customisation, setCustomisation] = useState('')
@@ -462,8 +461,6 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
       customerId: customer?.id,
       customerName: name,
       phone,
-      instagram: channel === 'INSTAGRAM' ? handle : undefined,
-      facebook: channel === 'FACEBOOK' ? handle : undefined,
       channel,
       threadId: thread?.id,
       items,
@@ -486,7 +483,7 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
       onClose={onClose}
       wide
       title={thread ? 'Create order from chat' : 'New order'}
-      subtitle={thread ? `From ${thread.handle}` : 'For orders taken by DM or phone'}
+      subtitle={thread ? `From the live chat with ${customer?.name ?? 'this customer'}` : 'For orders taken by phone or in person'}
       footer={
         <>
           <div className="mr-auto self-center text-sm">
@@ -518,20 +515,12 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
             <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+254 7…" inputMode="tel" />
           </Field>
           {!thread && (
-            <>
-              <Field label="Came in via">
-                <select className={inputClass} value={channel} onChange={(e) => setChannel(e.target.value as Channel)}>
-                  <option value="INSTAGRAM">Instagram DM</option>
-                  <option value="FACEBOOK">Facebook Messenger</option>
-                  <option value="WEB_FORM">Web form / phone</option>
-                </select>
-              </Field>
-              {channel !== 'WEB_FORM' && (
-                <Field label={channel === 'INSTAGRAM' ? 'Instagram handle' : 'Facebook name'}>
-                  <input className={inputClass} value={handle} onChange={(e) => setHandle(e.target.value)} placeholder={channel === 'INSTAGRAM' ? '@username' : 'Full name'} />
-                </Field>
-              )}
-            </>
+            <Field label="Came in via">
+              <select className={inputClass} value={channel} onChange={(e) => setChannel(e.target.value as Channel)}>
+                <option value="MANUAL">Phone / in person</option>
+                <option value="WEB_FORM">Web form</option>
+              </select>
+            </Field>
           )}
         </fieldset>
 

@@ -4,6 +4,7 @@ import { canTransition, earnsServiceFee, orderTotal, refundAmountFor, STATUS_LAB
 import type {
   AppState,
   Channel,
+  ChatStatus,
   Customer,
   FulfilmentMethod,
   MaterialMovement,
@@ -11,6 +12,8 @@ import type {
   OrderStatus,
   PaymentMethod,
   Settings,
+  Message,
+  MessageSender,
   Thread,
 } from './types'
 import { CUSTOMER_ACTOR } from './types'
@@ -21,7 +24,6 @@ export interface OrderDraft {
   phone?: string
   email?: string
   instagram?: string
-  facebook?: string
   channel: Channel
   threadId?: string
   items: { productId: string; qty: number }[]
@@ -46,10 +48,20 @@ export type Action =
   | { type: 'CONFIRM_PAYOUT'; payoutId: string }
   | { type: 'UPDATE_SETTINGS'; patch: Partial<Settings> }
   | { type: 'SWITCH_USER'; userId: string }
+  | { type: 'SET_CHAT_STATUS'; status: ChatStatus }
+  // Customer-side live chat. These run as the customer, not as a signed-in user.
+  | { type: 'CUSTOMER_START_CHAT'; name: string; phone: string; email?: string; startedFrom: Thread['startedFrom']; text?: string }
+  | { type: 'CUSTOMER_SEND_MESSAGE'; threadId: string; text: string }
+  | { type: 'CUSTOMER_READ'; threadId: string }
+  | { type: 'CUSTOMER_PAY'; orderId: string; reference: string }
 
 export type ActionResult =
-  | { ok: true; state: AppState; notices: string[]; createdOrderId?: string }
+  | { ok: true; state: AppState; notices: string[]; createdOrderId?: string; threadId?: string }
   | { ok: false; error: string }
+
+/** Author id for messages the system sends on her behalf (greeting, away reply). */
+export const AUTO_REPLY = 'auto'
+const AWAY_REPLY_EVERY_MS = 60 * 60_000
 
 const SUPER_ADMIN_ONLY: Action['type'][] = ['UPDATE_SETTINGS', 'CONFIRM_PAYOUT']
 
@@ -58,15 +70,19 @@ const SUPER_ADMIN_ONLY: Action['type'][] = ['UPDATE_SETTINGS', 'CONFIRM_PAYOUT']
  * always give the same result, which is what the tests rely on.
  */
 export function applyAction(state: AppState, action: Action, now: Date): ActionResult {
-  const user = state.users.find((u) => u.id === state.currentUserId)
-  if (!user) return fail('No signed-in user.')
-  if (SUPER_ADMIN_ONLY.includes(action.type) && user.role !== 'SUPER_ADMIN') {
-    return fail('Only the super admin can do that.')
+  let actor = CUSTOMER_ACTOR
+  if (!action.type.startsWith('CUSTOMER_')) {
+    const user = state.users.find((u) => u.id === state.currentUserId)
+    if (!user) return fail('No signed-in user.')
+    if (SUPER_ADMIN_ONLY.includes(action.type) && user.role !== 'SUPER_ADMIN') {
+      return fail('Only the super admin can do that.')
+    }
+    actor = user.id
   }
-  const tx = new Tx(state, now, user.id)
+  const tx = new Tx(state, now, actor)
   const error = run(tx, action)
   if (error) return fail(error)
-  return { ok: true, state: tx.state, notices: tx.notices, createdOrderId: tx.createdOrderId }
+  return { ok: true, state: tx.state, notices: tx.notices, createdOrderId: tx.createdOrderId, threadId: tx.threadId }
 }
 
 function fail(error: string): ActionResult {
@@ -77,6 +93,7 @@ function fail(error: string): ActionResult {
 class Tx {
   notices: string[] = []
   createdOrderId?: string
+  threadId?: string
   readonly at: string
 
   constructor(
@@ -109,10 +126,23 @@ class Tx {
     this.state = { ...this.state, threads: this.state.threads.map((t) => (t.id === thread.id ? thread : t)) }
   }
 
-  postToThread(threadId: string | undefined, from: 'SHOP' | 'SYSTEM', text: string) {
-    const thread = this.state.threads.find((t) => t.id === threadId)
+  thread(threadId: string | undefined): Thread | undefined {
+    return this.state.threads.find((t) => t.id === threadId)
+  }
+
+  postToThread(threadId: string | undefined, from: MessageSender, text: string, extra: Partial<Message> = {}) {
+    const thread = this.thread(threadId)
     if (!thread) return
-    const message = { id: this.id('msg'), from, text, at: this.at, read: true, by: from === 'SHOP' ? this.actor : undefined }
+    const message: Message = {
+      id: this.id('msg'),
+      from,
+      text,
+      at: this.at,
+      // Only customer messages wait to be read by the shop.
+      read: from !== 'CUSTOMER',
+      by: from === 'SHOP' ? this.actor : undefined,
+      ...extra,
+    }
     this.putThread({ ...thread, messages: [...thread.messages, message] })
   }
 }
@@ -216,6 +246,71 @@ function run(tx: Tx, action: Action): string | undefined {
       tx.state = { ...tx.state, currentUserId: action.userId }
       return
     }
+    case 'SET_CHAT_STATUS':
+      tx.state = { ...tx.state, chatStatus: action.status }
+      tx.notices.push(action.status === 'ONLINE' ? 'You’re online. Customers see that you reply quickly.' : 'You’re away. New chats get an automatic reply.')
+      return
+    case 'CUSTOMER_START_CHAT':
+      return startChat(tx, action)
+    case 'CUSTOMER_SEND_MESSAGE': {
+      const thread = tx.thread(action.threadId)
+      if (!thread) return 'This chat has ended. Please start a new one.'
+      return customerMessage(tx, thread.id, action.text)
+    }
+    case 'CUSTOMER_READ': {
+      const thread = tx.thread(action.threadId)
+      if (!thread) return 'Chat not found.'
+      tx.putThread({ ...thread, customerReadAt: tx.at })
+      return
+    }
+    case 'CUSTOMER_PAY':
+      return confirmPayment(tx, action.orderId, 'MPESA', action.reference)
+  }
+}
+
+const digits = (s?: string) => (s ?? '').replace(/\D/g, '').slice(-9)
+
+function startChat(tx: Tx, a: Extract<Action, { type: 'CUSTOMER_START_CHAT' }>) {
+  const name = a.name.trim()
+  if (!name) return 'Please add your name.'
+  if (digits(a.phone).length < 9) return 'Please add a phone number we can reach you on.'
+
+  let customer = tx.state.customers.find((c) => c.phone && digits(c.phone) === digits(a.phone))
+  if (!customer) {
+    customer = { id: tx.id('c'), name, phone: a.phone.trim(), email: a.email?.trim() || undefined, notes: '', tags: [], createdAt: tx.at }
+    tx.state = { ...tx.state, customers: [...tx.state.customers, customer] }
+  }
+
+  // One conversation per customer, so she sees their whole history in one place.
+  let thread = tx.state.threads.find((t) => t.customerId === customer.id)
+  if (!thread) {
+    thread = { id: tx.id('t'), customerId: customer.id, startedFrom: a.startedFrom, startedAt: tx.at, messages: [], customerReadAt: tx.at }
+    tx.state = { ...tx.state, threads: [...tx.state.threads, thread] }
+    tx.postToThread(thread.id, 'SHOP', `Hi ${name.split(' ')[0]}! 🌸 Welcome to Whimsy & Bloom. How can we help?`, { by: AUTO_REPLY })
+  }
+  tx.threadId = thread.id
+  if (a.text?.trim()) return customerMessage(tx, thread.id, a.text)
+}
+
+function customerMessage(tx: Tx, threadId: string, raw: string) {
+  const text = raw.trim()
+  if (!text) return 'Write a message first.'
+  if (text.length > 2000) return 'That message is too long. Please split it up.'
+  tx.postToThread(threadId, 'CUSTOMER', text)
+  const thread = tx.thread(threadId)!
+  tx.putThread({ ...thread, customerReadAt: tx.at })
+  tx.threadId = threadId
+
+  if (tx.state.chatStatus === 'AWAY') {
+    const lastAway = [...thread.messages].reverse().find((m) => m.by === AUTO_REPLY && m.text.startsWith('Thanks for your message'))
+    if (!lastAway || new Date(tx.at).getTime() - new Date(lastAway.at).getTime() > AWAY_REPLY_EVERY_MS) {
+      tx.postToThread(
+        threadId,
+        'SHOP',
+        'Thanks for your message! We’re away from the studio right now and will reply as soon as we’re back. You can also order any time from our order form.',
+        { by: AUTO_REPLY },
+      )
+    }
   }
 }
 
@@ -307,7 +402,7 @@ function onShipped(tx: Tx, order: Order) {
         }Thank you for choosing Whimsy & Bloom!`
   if (order.threadId) {
     tx.postToThread(order.threadId, 'SHOP', text)
-    tx.notices.push('Shipping confirmation sent in the customer’s DMs.')
+    tx.notices.push('Shipping confirmation sent in the chat.')
   } else {
     tx.audit(`${order.number}: shipping confirmation sent by SMS and email`)
     tx.notices.push('Shipping confirmation sent by SMS and email.')
@@ -334,10 +429,10 @@ function sendPaymentLink(tx: Tx, orderId: string) {
   if (!order) return 'Order not found.'
   if (order.status !== 'PENDING_PAYMENT') return 'This order is already paid.'
   tx.putOrder({ ...order, payment: { ...order.payment, linkSentAt: tx.at } })
-  const text = `Here’s your payment link for order ${order.number} (${formatKES(orderTotal(order))}). You can pay by M-Pesa or card 💳`
+  const text = `Here’s your payment link for order ${order.number} (${formatKES(orderTotal(order))}). Tap below to pay with M-Pesa 💳`
   if (order.threadId) {
-    tx.postToThread(order.threadId, 'SHOP', text)
-    tx.notices.push('Payment link sent in DMs.')
+    tx.postToThread(order.threadId, 'SHOP', text, { kind: 'PAYMENT_LINK', orderId: order.id })
+    tx.notices.push('Payment link sent in the chat.')
   } else {
     tx.notices.push('Payment link sent by SMS.')
   }
@@ -377,13 +472,12 @@ function createOrder(tx: Tx, draft: OrderDraft) {
   const customerId = upsertCustomer(tx, draft)
   const paid = draft.payment.kind === 'PAID'
   const number = `WB-${tx.state.nextOrderNumber}`
-  const thread = tx.state.threads.find((t) => t.id === draft.threadId)
+  const thread = tx.thread(draft.threadId)
   const order: Order = {
     id: tx.id('o'),
     number,
     customerId,
-    channel: draft.channel,
-    sourceHandle: thread?.handle ?? (draft.channel === 'INSTAGRAM' ? draft.instagram : draft.facebook),
+    channel: thread ? 'LIVE_CHAT' : draft.channel,
     threadId: thread?.id,
     items: items.map((i) => ({
       productId: i.productId,
@@ -408,7 +502,7 @@ function createOrder(tx: Tx, draft: OrderDraft) {
   }
   tx.state = { ...tx.state, orders: [order, ...tx.state.orders], nextOrderNumber: tx.state.nextOrderNumber + 1 }
   tx.createdOrderId = order.id
-  const via = draft.channel === 'WEB_FORM' ? 'web form' : 'DM conversation'
+  const via = draft.channel === 'WEB_FORM' ? 'web form' : draft.channel === 'LIVE_CHAT' ? 'live chat' : 'phone / in person'
   tx.audit(`${number}: created from ${via} for ${draft.customerName.trim()} (${formatKES(orderTotal(order))})`, actor)
   tx.notices.push(`Order ${number} created.`)
   if (draft.payment.kind === 'SEND_LINK') sendPaymentLink(tx, order.id)
@@ -421,14 +515,12 @@ function upsertCustomer(tx: Tx, draft: OrderDraft): string {
     tx.state.customers.find(
       (c) =>
         (draft.instagram && norm(c.instagram) === norm(draft.instagram)) ||
-        (draft.facebook && norm(c.facebook) === norm(draft.facebook)) ||
-        (draft.phone && c.phone && c.phone.replace(/\D/g, '') === draft.phone.replace(/\D/g, '')),
+        (draft.phone && c.phone && digits(c.phone) === digits(draft.phone)),
     )
   const contact = {
     phone: draft.phone?.trim() || undefined,
     email: draft.email?.trim() || undefined,
     instagram: draft.instagram?.trim() || undefined,
-    facebook: draft.facebook?.trim() || undefined,
   }
   if (existing) {
     // Fill in contact details we didn't have; never overwrite what's on file.

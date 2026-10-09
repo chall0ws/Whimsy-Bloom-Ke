@@ -28,7 +28,7 @@ export function Orders() {
       if (channel !== 'ALL' && o.channel !== channel) return false
       if (!q) return true
       const customer = state.customers.find((c) => c.id === o.customerId)
-      return [o.number, sourceLabel(o), orderSummary(state, o), customer?.name ?? '', o.customisation].some((s) => s.toLowerCase().includes(q))
+      return [o.number, sourceLabel(state, o), orderSummary(state, o), customer?.name ?? '', o.customisation].some((s) => s.toLowerCase().includes(q))
     }),
   )
 
@@ -36,7 +36,7 @@ export function Orders() {
     <>
       <PageHeader
         title="Orders"
-        subtitle="Web-form and DM orders in one queue."
+        subtitle="Web-form, live-chat and phone orders in one queue."
         actions={
           <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus size={16} aria-hidden /> New order
@@ -50,7 +50,7 @@ export function Orders() {
           <div className="min-w-0 flex-1">
             <div className="eyebrow !text-pink-ink">Next up · oldest pending order</div>
             <button type="button" onClick={() => openOrder(next.id)} className="mt-0.5 text-left text-sm hover:underline">
-              <strong>{next.number}</strong> · {orderSummary(state, next)} · {sourceLabel(next)} · waiting {relativeTime(next.createdAt)}
+              <strong>{next.number}</strong> · {orderSummary(state, next)} · {sourceLabel(state, next)} · waiting {relativeTime(next.createdAt)}
             </button>
           </div>
           <Button variant="primary" onClick={() => dispatch({ type: 'SET_STATUS', orderId: next.id, status: 'PROCESSING' })}>
@@ -76,9 +76,9 @@ export function Orders() {
           />
           <select className={`${inputClass} !w-auto`} value={channel} onChange={(e) => setChannel(e.target.value as typeof channel)} aria-label="Filter by source">
             <option value="ALL">All sources</option>
-            <option value="INSTAGRAM">Instagram DM</option>
-            <option value="FACEBOOK">Messenger</option>
+            <option value="LIVE_CHAT">Live chat</option>
             <option value="WEB_FORM">Web form</option>
+            <option value="MANUAL">Phone / in person</option>
           </select>
           <label className="relative min-w-[200px] flex-1">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden />

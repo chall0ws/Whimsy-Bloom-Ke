@@ -1,4 +1,5 @@
-import { CircleCheck, Smartphone } from 'lucide-react'
+import { CircleCheck, MessageCircle, Smartphone } from 'lucide-react'
+import { ChatWidget, customerUnread, useMyThread } from '../components/chat/ChatWidget'
 import { useEffect, useState } from 'react'
 import { BloomMark, Logo } from '../components/Logo'
 import { Button, cx, Field, inputClass } from '../components/ui'
@@ -9,7 +10,7 @@ import { useStore } from '../state/store'
 type Step = 'form' | 'paying' | 'done'
 
 /**
- * The page linked from her Instagram and Facebook bios. In Stage A it writes straight
+ * The page linked from her social media bios. In Stage A it writes straight
  * into the dashboard and simulates the M-Pesa prompt.
  */
 export function OrderForm() {
@@ -76,7 +77,8 @@ export function OrderForm() {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-4 rounded-xl bg-surface-2 px-4 py-2.5 text-xs text-ink-2">
-        <strong>Preview:</strong> this is the customer page linked in her bios. Orders placed here appear in Order Management as <em>Web Form</em>. Payment is simulated.
+        <strong>Preview:</strong> this is the customer page linked in her bios. Orders placed here appear in Order Management as <em>Web Form</em>. Payment is simulated. The chat
+        button in the corner opens live chat.
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-card">
@@ -127,7 +129,7 @@ export function OrderForm() {
                   <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07…" inputMode="tel" autoComplete="tel" />
                 </Field>
               </div>
-              <Field label="Instagram handle (optional)" hint="So we can recognise you in DMs">
+              <Field label="Instagram handle (optional)" hint="Helps us recognise you">
                 <input className={inputClass} value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@" />
               </Field>
             </fieldset>
@@ -211,6 +213,37 @@ export function OrderForm() {
           </div>
         )}
       </div>
+      <ChatBubble />
     </div>
+  )
+}
+
+/** The "Chat with us" button and pop-up that sits on the order form. */
+function ChatBubble() {
+  const [open, setOpen] = useState(false)
+  const [thread] = useMyThread()
+  const unseen = customerUnread(thread)
+  return (
+    <>
+      {open && (
+        <ChatWidget
+          startedFrom="ORDER_FORM"
+          onClose={() => setOpen(false)}
+          className="fixed inset-x-3 bottom-3 top-16 z-50 sm:inset-x-auto sm:right-6 sm:top-auto sm:bottom-24 sm:h-[560px] sm:w-[380px]"
+        />
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`fixed bottom-6 right-6 z-50 h-14 ${open ? 'hidden sm:inline-flex' : 'inline-flex'} items-center gap-2 rounded-full bg-green px-5 font-medium text-on-green shadow-xl hover:opacity-95`}
+        aria-expanded={open}
+      >
+        <MessageCircle size={20} aria-hidden />
+        {open ? 'Close chat' : 'Chat with us'}
+        {!open && unseen > 0 && (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-pink px-1.5 text-[11px] font-bold text-[#3b1a24]">{unseen}</span>
+        )}
+      </button>
+    </>
   )
 }

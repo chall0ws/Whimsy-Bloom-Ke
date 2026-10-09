@@ -1,4 +1,4 @@
-import type { AppState, Order, OrderStatus, Settings } from './types'
+import type { AppState, Channel, Order, OrderStatus, Settings } from './types'
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   PENDING_PAYMENT: 'Awaiting payment',
@@ -61,10 +61,19 @@ export function orderSummary(state: AppState, order: Order): string {
     .join(', ')
 }
 
-export function sourceLabel(order: Order): string {
-  if (order.channel === 'WEB_FORM') return 'Web Form'
-  const prefix = order.channel === 'INSTAGRAM' ? 'IG DM' : 'FB DM'
-  return order.sourceHandle ? `${prefix}: ${order.sourceHandle}` : prefix
+export const CHANNEL_LABEL: Record<Channel, string> = {
+  LIVE_CHAT: 'Live chat',
+  WEB_FORM: 'Web Form',
+  MANUAL: 'Phone / in person',
+}
+
+export function customerName(state: AppState, customerId: string): string {
+  return state.customers.find((c) => c.id === customerId)?.name ?? 'Customer'
+}
+
+/** "Live chat: Wanjiru Kamau", "Web Form: Brian Mwangi". */
+export function sourceLabel(state: AppState, order: Order): string {
+  return `${CHANNEL_LABEL[order.channel]}: ${customerName(state, order.customerId)}`
 }
 
 /** The order she should work on next: the oldest paid order still waiting to be started. */

@@ -17,7 +17,7 @@ import type {
   Thread,
 } from './types'
 
-export const STATE_VERSION = 1
+export const STATE_VERSION = 2
 
 const OWNER = 'u-owner'
 const PARTNER = 'u-partner'
@@ -61,6 +61,7 @@ export function createSeedState(now: Date, seed = 20261009): AppState {
     movements,
     audit,
     settings: { ...DEFAULT_SETTINGS },
+    chatStatus: 'ONLINE',
     nextOrderNumber: 1001 + orders.length,
     nextId: 1000,
   }
@@ -156,13 +157,12 @@ class Gen {
       used.add(name)
       // Skewed towards recent dates so customer growth trends upward.
       const daysAgo = 84 * Math.pow(this.rand(), 1.5)
-      const hasIg = this.chance(0.7)
+      const hasIg = this.chance(0.5)
       const notes = this.chance(0.25) ? this.pick(NOTES) : ''
       out.push({
         id: this.id('c'),
         name,
         instagram: hasIg ? `@${first.toLowerCase()}.${last.toLowerCase().slice(0, 4)}` : undefined,
-        facebook: !hasIg || this.chance(0.2) ? name : undefined,
         phone: this.chance(0.8) ? this.phone() : undefined,
         email: this.chance(0.3) ? `${first.toLowerCase()}.${last.toLowerCase()}@gmail.com` : undefined,
         notes,
@@ -204,7 +204,7 @@ class Gen {
 
   order(c: Customer, createdAt: Date, opts: Partial<{ productId: string; qty: number; channel: Channel; status: OrderStatus; hand: boolean }> = {}): Order {
     const channel: Channel =
-      opts.channel ?? (c.instagram && this.chance(0.6) ? 'INSTAGRAM' : c.facebook && this.chance(0.5) ? 'FACEBOOK' : 'WEB_FORM')
+      opts.channel ?? (this.chance(0.45) ? 'LIVE_CHAT' : this.chance(0.85) ? 'WEB_FORM' : 'MANUAL')
     const productId = opts.productId ?? this.weighted(PRODUCT_WEIGHTS)
     const qty = opts.qty ?? (this.chance(0.15) ? 2 : 1)
     const hand = opts.hand ?? this.chance(0.4)
@@ -239,7 +239,6 @@ class Gen {
       number: '',
       customerId: c.id,
       channel,
-      sourceHandle: channel === 'INSTAGRAM' ? c.instagram : channel === 'FACEBOOK' ? c.facebook : undefined,
       items: [{ productId, qty, unitPrice: product.price }],
       customisation: this.pick(CUSTOMISATIONS),
       fulfilment: hand
@@ -262,7 +261,7 @@ class Gen {
     }
   }
 
-  /** Hand-written customers, orders and DM threads so the inbox reads like a real one. */
+  /** Hand-written customers, orders and live chats so the inbox reads like a real one. */
   storyline(customers: Customer[], orders: Order[]) {
     const now = this.now.getTime()
     const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString()
@@ -280,88 +279,104 @@ class Gen {
 
     const wanjiru = person('Wanjiru Kamau', { instagram: '@wanjiru.blooms', phone: this.phone() }, 40)
     const achieng = person('Achieng Otieno', { instagram: '@achieng.o', phone: this.phone() }, 185)
-    const brian = person('Brian Mwangi', { facebook: 'Brian Mwangi', phone: this.phone() }, 260)
+    const brian = person('Brian Mwangi', { phone: this.phone() }, 260)
     const faith = person(
       'Faith Njeri',
       { instagram: '@faith.njeri', phone: this.phone(), notes: 'Prefers soft pink tulips. Usually orders for her sister’s birthday.', tags: ['Repeat', 'VIP'] },
       60 * 24 * 70,
     )
-    const kevin = person('Kevin Odhiambo', { facebook: 'Kevin Odhiambo' }, 300)
+    const kevin = person('Kevin Odhiambo', { phone: this.phone() }, 300)
     const mercy = person('Mercy Wambui', { instagram: '@mercy.wambui', phone: this.phone() }, 60 * 26)
     const amina = person('Amina Hassan', { instagram: '@amina.h', phone: this.phone() }, 60 * 24 * 4)
     const grace = person(
       'Grace Mutua',
-      { facebook: 'Grace Mutua', email: 'grace.mutua@gmail.com', notes: 'Office events — asks for formal receipts.', tags: ['Corporate'] },
+      { phone: this.phone(), email: 'grace.mutua@gmail.com', notes: 'Office events — asks for formal receipts.', tags: ['Corporate'] },
       60 * 24 * 5,
     )
 
-    const achiengOrder = linked(achieng, 175, { productId: 'p-tulip', qty: 2, channel: 'INSTAGRAM', status: 'PENDING_PAYMENT', hand: true }, 'Card: “Happy anniversary, love A.”')
+    const achiengOrder = linked(achieng, 175, { productId: 'p-tulip', qty: 2, channel: 'LIVE_CHAT', status: 'PENDING_PAYMENT', hand: true }, 'Card: “Happy anniversary, love A.”')
     achiengOrder.fulfilment = { method: 'HAND_DELIVERY', address: 'Kilimani, Nairobi', deliveryFee: 0 }
-    const brianOrder = linked(brian, 250, { productId: 'p-giant-rose', qty: 1, channel: 'FACEBOOK', status: 'PENDING', hand: false }, 'Deep red with gold-edged petals.')
-    const mercyOrder = linked(mercy, 60 * 25, { productId: 'p-pink-lily', qty: 1, channel: 'INSTAGRAM', status: 'PROCESSING', hand: true }, 'Blush ribbon.')
-    const aminaOrder = linked(amina, 60 * 24 * 4, { productId: 'p-peony', qty: 1, channel: 'INSTAGRAM' }, 'Card: “For the best teacher.”')
+    const brianOrder = linked(brian, 250, { productId: 'p-giant-rose', qty: 1, channel: 'LIVE_CHAT', status: 'PENDING', hand: false }, 'Deep red with gold-edged petals.')
+    const mercyOrder = linked(mercy, 60 * 25, { productId: 'p-pink-lily', qty: 1, channel: 'LIVE_CHAT', status: 'PROCESSING', hand: true }, 'Blush ribbon.')
+    const aminaOrder = linked(amina, 60 * 24 * 4, { productId: 'p-peony', qty: 1, channel: 'LIVE_CHAT' }, 'Card: “For the best teacher.”')
     for (const daysAgo of [68, 40, 12]) {
-      linked(faith, daysAgo * 24 * 60, { productId: 'p-tulip', qty: 1, channel: 'INSTAGRAM' }, 'Soft pink tulips, white ribbon.')
+      linked(faith, daysAgo * 24 * 60, { productId: 'p-tulip', qty: 1, channel: 'LIVE_CHAT' }, 'Soft pink tulips, white ribbon.')
     }
     achiengOrder.payment.linkSentAt = ago(160)
 
-    const msg = (from: Message['from'], minutesAgo: number, text: string, read = true): Message => ({
+    const msg = (from: Message['from'], minutesAgo: number, text: string, read = true, extra: Partial<Message> = {}): Message => ({
       id: this.id('m'),
       from,
       text,
       at: ago(minutesAgo),
       read: from === 'CUSTOMER' ? read : true,
       by: from === 'SHOP' ? OWNER : undefined,
+      ...extra,
     })
-    const thread = (c: Customer, channel: Thread['channel'], messages: Message[]): Thread => ({
+    const greeting = (c: Customer, minutesAgo: number) =>
+      msg('SHOP', minutesAgo, `Hi ${c.name.split(' ')[0]}! 🌸 Welcome to Whimsy & Bloom. How can we help?`, true, { by: 'auto' })
+    // The customer has seen everything up to their own latest message.
+    const thread = (c: Customer, startedFrom: Thread['startedFrom'], messages: Message[]): Thread => ({
       id: this.id('t'),
-      channel,
       customerId: c.id,
-      handle: channel === 'INSTAGRAM' ? c.instagram! : c.facebook!,
+      startedFrom,
+      startedAt: messages[0].at,
       messages,
+      customerReadAt: [...messages].reverse().find((m) => m.from === 'CUSTOMER')?.at,
     })
 
     // Messages that mention order numbers are built after numbering.
     return {
       buildThreads: (): Thread[] => {
         const threads = [
-          thread(wanjiru, 'INSTAGRAM', [
+          thread(wanjiru, 'CHAT_LINK', [
+            greeting(wanjiru, 36),
             msg('CUSTOMER', 35, 'Hi! Do you make the Bespoke Pink Lily in a bigger size? 😍', false),
             msg('CUSTOMER', 33, 'It’s for my mum’s birthday on Saturday. Delivery to Lavington.', false),
           ]),
-          thread(achieng, 'INSTAGRAM', [
+          thread(achieng, 'CHAT_LINK', [
+            greeting(achieng, 181),
             msg('CUSTOMER', 180, 'Hello, I’d like the Soft Pink Tulips, 2 bouquets, delivered to Kilimani please'),
             msg('SHOP', 178, 'Hi Achieng! Absolutely 🌷 Would you like a card message with them?'),
             msg('CUSTOMER', 176, 'Yes please: “Happy anniversary, love A.”'),
-            msg('SHOP', 160, `Here’s your payment link for order ${achiengOrder.number} (${formatKES(orderTotal(achiengOrder))}). You can pay by M-Pesa or card 💳`),
+            msg('SHOP', 160, `Here’s your payment link for order ${achiengOrder.number} (${formatKES(orderTotal(achiengOrder))}). Tap below to pay with M-Pesa 💳`, true, {
+              kind: 'PAYMENT_LINK',
+              orderId: achiengOrder.id,
+            }),
             msg('CUSTOMER', 62, 'Will pay in a bit, thank you!', false),
           ]),
-          thread(brian, 'FACEBOOK', [
-            msg('CUSTOMER', 262, 'Hey, I saw the Giant Rose on your page. Can you do deep red with gold edges?'),
+          thread(brian, 'ORDER_FORM', [
+            greeting(brian, 263),
+            msg('CUSTOMER', 262, 'Hey, I saw the Giant Rose on your Instagram. Can you do deep red with gold edges?'),
             msg('SHOP', 255, 'Hi Brian! Yes we can 🌹 That’s KES 4,800 plus KES 300 courier delivery.'),
             msg('CUSTOMER', 252, 'Perfect, deliver to Westlands. Paying now.'),
             msg('SYSTEM', 246, `Payment received for ${brianOrder.number} · M-Pesa ${brianOrder.payment.reference}`),
           ]),
-          thread(faith, 'INSTAGRAM', [
+          thread(faith, 'CHAT_LINK', [
+            greeting(faith, 60 * 24 * 12 + 11),
             msg('CUSTOMER', 60 * 24 * 12 + 10, 'Same tulips as last time please 💕'),
             msg('SHOP', 60 * 24 * 12, 'Of course Faith! Soft pink with the white ribbon. Sending the link now.'),
             msg('CUSTOMER', 60 * 20, 'Hey love! Can I get the same again for my sister? Her birthday is next week 😊', false),
           ]),
-          thread(kevin, 'FACEBOOK', [
+          thread(kevin, 'ORDER_FORM', [
+            greeting(kevin, 291),
             msg('CUSTOMER', 290, 'Do you deliver to Kisumu? How much would a Peony Posy cost to get there?', false),
           ]),
-          thread(mercy, 'INSTAGRAM', [
+          thread(mercy, 'CHAT_LINK', [
+            greeting(mercy, 60 * 26 + 1),
             msg('CUSTOMER', 60 * 26, 'Hi! One Bespoke Pink Lily please, I’ll collect… actually can you deliver to Ruaka?'),
             msg('SHOP', 60 * 25, `Sure Mercy! Order ${mercyOrder.number} is confirmed 🌸 We’ll hand-deliver it to you.`),
             msg('SHOP', 60 * 3, 'Quick question: would you like a lilac or blush ribbon?'),
             msg('CUSTOMER', 60 * 2.5, 'Blush please! Thank you 💗'),
           ]),
-          thread(amina, 'INSTAGRAM', [
+          thread(amina, 'CHAT_LINK', [
+            greeting(amina, 60 * 24 * 4 + 6),
             msg('CUSTOMER', 60 * 24 * 4 + 5, 'Hi, a Peony Posy for my daughter’s teacher please.'),
             msg('SHOP', 60 * 24 * 4, `Lovely! Order ${aminaOrder.number} is in 🌸`),
             msg('CUSTOMER', 60 * 6, 'Received it, it’s stunning!! 😭💕 She loved it.'),
           ]),
-          thread(grace, 'FACEBOOK', [
+          thread(grace, 'ORDER_FORM', [
+            greeting(grace, 60 * 24 * 5 + 1),
             msg('CUSTOMER', 60 * 24 * 5, 'Hello, we’d like 15 Rosebud Boxes for our office’s Women’s Day. Is there a bulk price?'),
             msg('SHOP', 60 * 24 * 5 - 30, 'Hi Grace! For 15 boxes we can do KES 1,600 each. When do you need them?'),
             msg('CUSTOMER', 60 * 24 * 4.8, 'Great, I’ll confirm with finance and get back to you.'),

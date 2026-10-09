@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { applyAction, type Action, type ActionResult } from '../domain/actions'
+import { unreadTotals } from '../domain/metrics'
 import { createSeedState, STATE_VERSION } from '../domain/seed'
 import type { AppState, User } from '../domain/types'
 
@@ -28,7 +29,7 @@ interface Store {
 
 const StoreContext = createContext<Store | null>(null)
 
-function loadState(now: Date): AppState {
+function readStored(): AppState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
@@ -38,8 +39,15 @@ function loadState(now: Date): AppState {
   } catch {
     // Storage can be blocked (private mode, previews); fall back to fresh demo data.
   }
-  return createSeedState(now)
+  return null
 }
+
+function loadState(now: Date): AppState {
+  return readStored() ?? createSeedState(now)
+}
+
+/** The customer chat page doesn't show staff notifications. */
+const onCustomerPage = () => /^#\/?chat/.test(window.location.hash)
 
 function saveState(state: AppState) {
   try {
@@ -62,7 +70,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(timer)
   }, [])
 
-  useEffect(() => saveState(state), [state])
+  // Save only our own changes. Saving data that just arrived from another tab would echo it back forever.
+  useEffect(() => {
+    if (!readStored()) saveState(stateRef.current)
+  }, [])
+
+  // Live updates: another tab (for example the customer chat) changed the shared data.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return
+      const incoming = readStored()
+      if (!incoming) return
+      const before = stateRef.current
+      // Who is signed in belongs to this tab only.
+      const next = { ...incoming, currentUserId: before.currentUserId }
+      stateRef.current = next
+      setState(next)
+      if (!onCustomerPage() && unreadTotals(next.threads).messages > unreadTotals(before.threads).messages) {
+        const thread = next.threads.find((t) => t.messages.at(-1)?.from === 'CUSTOMER' && t.messages.at(-1)?.at !== before.threads.find((b) => b.id === t.id)?.messages.at(-1)?.at)
+        const name = next.customers.find((c) => c.id === thread?.customerId)?.name ?? 'a customer'
+        toastRef.current(`New chat message from ${name}`)
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   const dismissToast = useCallback((id: number) => setToasts((ts) => ts.filter((t) => t.id !== id)), [])
 
@@ -75,13 +107,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [dismissToast],
   )
 
+  const toastRef = useRef(toast)
+  toastRef.current = toast
+
   const dispatch = useCallback(
     (action: Action) => {
-      const result = applyAction(stateRef.current, action, new Date())
+      // Start from the latest saved data so changes made in another tab aren't overwritten.
+      const stored = readStored()
+      const base = stored ? { ...stored, currentUserId: stateRef.current.currentUserId } : stateRef.current
+      const result = applyAction(base, action, new Date())
       if (result.ok) {
         stateRef.current = result.state
         setState(result.state)
-        result.notices.forEach((n) => toast(n))
+        saveState(result.state)
+        if (!action.type.startsWith('CUSTOMER_')) result.notices.forEach((n) => toast(n))
       } else {
         toast(result.error, 'error')
       }
@@ -94,6 +133,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const fresh = { ...createSeedState(new Date()), currentUserId: stateRef.current.currentUserId }
     stateRef.current = fresh
     setState(fresh)
+    saveState(fresh)
     openOrder(null)
     toast('Demo data reset.')
   }, [toast])
@@ -125,6 +165,7 @@ export function useStore(): Store {
 }
 
 export function userName(state: AppState, id: string): string {
-  if (id === 'customer') return 'Customer (web form)'
+  if (id === 'customer') return 'Customer'
+  if (id === 'auto') return 'Automatic reply'
   return state.users.find((u) => u.id === id)?.name ?? id
 }

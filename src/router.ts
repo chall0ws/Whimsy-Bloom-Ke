@@ -9,6 +9,7 @@ export type Route =
   | { page: 'fees' }
   | { page: 'settings' }
   | { page: 'order-form' }
+  | { page: 'chat' }
 
 export function parseHash(hash: string): Route {
   const [page, id] = hash.replace(/^#\/?/, '').split('/')
@@ -18,6 +19,7 @@ export function parseHash(hash: string): Route {
     case 'fees':
     case 'settings':
     case 'order-form':
+    case 'chat':
       return { page }
     case 'inbox':
       return { page, threadId: id || undefined }

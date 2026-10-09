@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyAction, type Action, type OrderDraft } from './actions'
+import { applyAction, AUTO_REPLY, type Action, type OrderDraft } from './actions'
 import { DEFAULT_SETTINGS, MATERIALS, PRODUCTS, RECIPES, USERS } from './catalog'
 import { feeSummary } from './fees'
 import { netRevenue } from './orders'
@@ -21,9 +21,9 @@ function emptyState(overrides: Partial<AppState> = {}): AppState {
     threads: [
       {
         id: 't-1',
-        channel: 'INSTAGRAM',
-        customerId: 'c-1',
-        handle: '@wanjiru.blooms',
+        customerId: 'c-wanjiru',
+        startedFrom: 'CHAT_LINK',
+        startedAt: NOW.toISOString(),
         messages: [{ id: 'm-1', from: 'CUSTOMER', text: 'Hi!', at: NOW.toISOString(), read: false }],
       },
     ],
@@ -32,6 +32,7 @@ function emptyState(overrides: Partial<AppState> = {}): AppState {
     movements: [],
     audit: [],
     settings: { ...DEFAULT_SETTINGS },
+    chatStatus: 'ONLINE',
     nextOrderNumber: 1001,
     nextId: 1,
     ...overrides,
@@ -51,7 +52,7 @@ function applyAll(state: AppState, actions: Action[]): AppState {
 const draft = (overrides: Partial<OrderDraft> = {}): OrderDraft => ({
   customerName: 'Wanjiru Kamau',
   instagram: '@wanjiru.blooms',
-  channel: 'INSTAGRAM',
+  channel: 'LIVE_CHAT',
   threadId: 't-1',
   items: [{ productId: 'p-pink-lily', qty: 1 }],
   customisation: 'Bigger size',
@@ -73,12 +74,12 @@ const ship = (orderId: string): Action[] => [
 ]
 
 describe('creating orders', () => {
-  it('creates a DM order linked to the conversation and a new customer', () => {
+  it('creates a chat order linked to the conversation and a new customer', () => {
     const { state, orderId } = createPaidOrder(emptyState())
     const order = state.orders.find((o) => o.id === orderId)!
     expect(order.number).toBe('WB-1001')
     expect(order.status).toBe('PENDING')
-    expect(order.sourceHandle).toBe('@wanjiru.blooms')
+    expect(order.channel).toBe('LIVE_CHAT')
     expect(order.threadId).toBe('t-1')
     expect(order.fulfilment.deliveryFee).toBe(DEFAULT_SETTINGS.defaultShippingFee)
     expect(order.payment.reference).toBe('SJK7H2L9QX')
@@ -107,7 +108,7 @@ describe('creating orders', () => {
     expect(order.status).toBe('PENDING_PAYMENT')
     expect(order.payment.linkSentAt).toBe(NOW.toISOString())
     const last = state.threads[0].messages.at(-1)!
-    expect(last.from).toBe('SHOP')
+    expect(last).toMatchObject({ from: 'SHOP', kind: 'PAYMENT_LINK', orderId })
     expect(last.text).toContain('WB-1001')
   })
 
@@ -269,6 +270,61 @@ describe('inbox', () => {
     const state = apply(emptyState(), { type: 'SEND_MESSAGE', threadId: 't-1', text: 'Hello!' })
     expect(state.threads[0].messages.every((m) => m.read)).toBe(true)
     expect(state.threads[0].messages).toHaveLength(2)
+  })
+})
+
+describe('live chat (customer side)', () => {
+  const start = (state: AppState, extra: Partial<Extract<Action, { type: 'CUSTOMER_START_CHAT' }>> = {}) => {
+    const result = applyAction(
+      state,
+      { type: 'CUSTOMER_START_CHAT', name: 'Joy Wairimu', phone: '0712 345 678', startedFrom: 'CHAT_LINK', text: 'Hi! Do you deliver to Thika?', ...extra },
+      NOW,
+    )
+    if (!result.ok) throw new Error(result.error)
+    return { state: result.state, threadId: result.threadId! }
+  }
+
+  it('starts a chat as the customer, without a signed-in user', () => {
+    const { state, threadId } = start(emptyState({ currentUserId: 'nobody' }))
+    const thread = state.threads.find((t) => t.id === threadId)!
+    expect(state.customers).toHaveLength(1)
+    expect(thread.messages.map((m) => m.from)).toEqual(['SHOP', 'CUSTOMER'])
+    expect(thread.messages[1].read).toBe(false)
+  })
+
+  it('reuses the same conversation when the customer comes back with the same number', () => {
+    const first = start(emptyState())
+    const again = start(first.state, { name: 'Joy W', phone: '+254 712 345 678', text: 'Me again' })
+    expect(again.threadId).toBe(first.threadId)
+    expect(again.state.threads).toHaveLength(2)
+    expect(again.state.customers).toHaveLength(1)
+  })
+
+  it('requires a name and a phone number', () => {
+    expect(applyAction(emptyState(), { type: 'CUSTOMER_START_CHAT', name: '', phone: '0712345678', startedFrom: 'CHAT_LINK' }, NOW).ok).toBe(false)
+    expect(applyAction(emptyState(), { type: 'CUSTOMER_START_CHAT', name: 'Joy', phone: '123', startedFrom: 'CHAT_LINK' }, NOW).ok).toBe(false)
+  })
+
+  it('sends one automatic away reply while she is away', () => {
+    const away = apply(emptyState(), { type: 'SET_CHAT_STATUS', status: 'AWAY' })
+    let { state, threadId } = start(away)
+    state = apply(state, { type: 'CUSTOMER_SEND_MESSAGE', threadId, text: 'Hello?' })
+    const autos = state.threads.find((t) => t.id === threadId)!.messages.filter((m) => m.by === AUTO_REPLY && m.text.startsWith('Thanks for your message'))
+    expect(autos).toHaveLength(1)
+  })
+
+  it('lets the customer pay from the chat, which moves the order to pending', () => {
+    const created = createPaidOrder(emptyState(), { payment: { kind: 'SEND_LINK' } })
+    const state = apply(created.state, { type: 'CUSTOMER_PAY', orderId: created.orderId, reference: 'sab12cd34e' })
+    const order = state.orders[0]
+    expect(order).toMatchObject({ status: 'PENDING', payment: { status: 'PAID', reference: 'SAB12CD34E' } })
+    expect(order.history.at(-1)!.by).toBe('customer')
+    expect(state.threads[0].messages.at(-1)!.from).toBe('SYSTEM')
+  })
+
+  it('records when the customer has seen the shop’s replies', () => {
+    const state = apply(emptyState(), { type: 'CUSTOMER_READ', threadId: 't-1' })
+    expect(state.threads[0].customerReadAt).toBe(NOW.toISOString())
   })
 })
 

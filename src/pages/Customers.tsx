@@ -1,7 +1,7 @@
-import { Mail, MessageCircle, Phone, Plus, Search, X } from 'lucide-react'
+import { AtSign, Mail, MessageCircle, Phone, Plus, Search, X } from 'lucide-react'
 import { useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Avatar, Button, Card, ChannelIcon, EmptyState, inputClass, Modal, StatusChip } from '../components/ui'
+import { Avatar, Button, Card, EmptyState, inputClass, Modal, StatusChip } from '../components/ui'
 import { formatDate, formatKES } from '../domain/format'
 import { customerStats } from '../domain/metrics'
 import { orderSummary, productName } from '../domain/orders'
@@ -18,7 +18,7 @@ export function Customers({ customerId }: { customerId?: string }) {
   const q = query.trim().toLowerCase()
   const rows = state.customers
     .map((c) => ({ customer: c, stats: customerStats(state, c.id) }))
-    .filter(({ customer: c }) => !q || [c.name, c.instagram, c.facebook, c.phone, c.notes, ...c.tags].some((s) => s?.toLowerCase().includes(q)))
+    .filter(({ customer: c }) => !q || [c.name, c.instagram, c.phone, c.email, c.notes, ...c.tags].some((s) => s?.toLowerCase().includes(q)))
     .sort((a, b) => {
       if (sort === 'spend') return b.stats.lifetimeSpend - a.stats.lifetimeSpend
       if (sort === 'name') return a.customer.name.localeCompare(b.customer.name)
@@ -60,7 +60,7 @@ export function Customers({ customerId }: { customerId?: string }) {
                       ))}
                     </div>
                     <div className="truncate text-xs text-muted">
-                      {[c.instagram, c.facebook && !c.instagram ? `FB: ${c.facebook}` : undefined, c.phone].filter(Boolean).join(' · ')}
+                      {[c.phone, c.instagram].filter(Boolean).join(' · ')}
                       {c.notes && <span className="text-ink-2"> · {c.notes}</span>}
                     </div>
                   </div>
@@ -118,12 +118,7 @@ function CustomerProfile({ customer }: { customer: Customer }) {
         <ul className="space-y-1.5 text-sm">
           {customer.instagram && (
             <li className="flex items-center gap-2">
-              <ChannelIcon channel="INSTAGRAM" /> {customer.instagram}
-            </li>
-          )}
-          {customer.facebook && (
-            <li className="flex items-center gap-2">
-              <ChannelIcon channel="FACEBOOK" /> {customer.facebook}
+              <AtSign size={14} aria-hidden /> {customer.instagram} <span className="text-muted">(Instagram)</span>
             </li>
           )}
           {customer.phone && (
@@ -157,7 +152,7 @@ function CustomerProfile({ customer }: { customer: Customer }) {
             onBlur={saveNotes}
             placeholder="e.g. Prefers soft pink tulips. Sister’s birthday is in March."
           />
-          <p className="mt-1 text-xs text-muted">Saved when you click away. Shows next to this customer’s DMs.</p>
+          <p className="mt-1 text-xs text-muted">Saved when you click away. Shows next to this customer’s live chat.</p>
         </div>
 
         <div>

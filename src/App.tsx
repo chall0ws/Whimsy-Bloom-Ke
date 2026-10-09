@@ -1,6 +1,7 @@
 import { Layout } from './components/Layout'
 import { OrderDrawer } from './components/orders'
 import { Toasts } from './components/ui'
+import { CustomerChat } from './pages/CustomerChat'
 import { Customers } from './pages/Customers'
 import { Fees } from './pages/Fees'
 import { Inbox } from './pages/Inbox'
@@ -14,6 +15,15 @@ import { StoreProvider } from './state/store'
 
 function Page() {
   const route = useRoute()
+  // The customer chat is a customer-facing page, so it has no dashboard around it.
+  if (route.page === 'chat') {
+    return (
+      <>
+        <CustomerChat />
+        <Toasts />
+      </>
+    )
+  }
   return (
     <Layout route={route}>
       {route.page === 'overview' && <Overview />}

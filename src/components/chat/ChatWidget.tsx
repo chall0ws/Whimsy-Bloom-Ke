@@ -1,0 +1,267 @@
+import { CircleCheck, Send, Smartphone, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { formatDate, formatKES, formatTime, isSameDay } from '../../domain/format'
+import { orderSummary, orderTotal } from '../../domain/orders'
+import type { Message, Thread } from '../../domain/types'
+import { makeTypingNotifier, useLiveSignals, usePresence } from '../../state/live'
+import { useStore } from '../../state/store'
+import { BloomMark } from '../Logo'
+import { Button, cx, Field, inputClass } from '../ui'
+
+const MY_CHAT_KEY = 'whimsy-bloom:my-chat'
+
+function readMyChat(): string | null {
+  try {
+    return localStorage.getItem(MY_CHAT_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeMyChat(id: string | null) {
+  try {
+    if (id) localStorage.setItem(MY_CHAT_KEY, id)
+    else localStorage.removeItem(MY_CHAT_KEY)
+  } catch {
+    // Without storage the chat still works until the page is closed.
+  }
+}
+
+/** The customer's own conversation in this browser, if they've started one. */
+export function useMyThread() {
+  const { state } = useStore()
+  const [, rerender] = useState(0)
+  // Read on every render so the chat pop-up and its button agree on which chat is ours.
+  const threadId = readMyChat()
+  const thread = state.threads.find((t) => t.id === threadId)
+  const set = (id: string | null) => {
+    writeMyChat(id)
+    rerender((n) => n + 1)
+  }
+  return [thread, set] as const
+}
+
+/** Shop replies the customer hasn't seen yet. */
+export function customerUnread(thread: Thread | undefined): number {
+  if (!thread) return 0
+  return thread.messages.filter((m) => m.from !== 'CUSTOMER' && (!thread.customerReadAt || m.at > thread.customerReadAt)).length
+}
+
+const STARTERS = ['I’d like to order a bouquet', 'How much is delivery?', 'Can you do custom colours?']
+
+/**
+ * Customer-facing live chat. Used full-page (the link in her bio) and as the
+ * pop-up on the order form.
+ */
+export function ChatWidget({ startedFrom, onClose, className }: { startedFrom: Thread['startedFrom']; onClose?: () => void; className?: string }) {
+  const { state } = useStore()
+  const [thread, setThreadId] = useMyThread()
+  const online = state.chatStatus === 'ONLINE'
+
+  return (
+    <div className={cx('flex min-h-0 flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl', className)}>
+      <header className="flex items-center gap-3 bg-green px-4 py-3 text-on-green">
+        <span className="rounded-full bg-surface p-1">
+          <BloomMark size={30} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-lg font-semibold leading-tight tracking-wide">Whimsy &amp; Bloom</div>
+          <div className="flex items-center gap-1.5 text-xs opacity-90">
+            <span className={cx('h-2 w-2 rounded-full', online ? 'bg-[#7ee2a1]' : 'bg-[#e9c46a]')} aria-hidden />
+            {online ? 'Online · usually replies in a few minutes' : 'Away · we’ll reply as soon as we’re back'}
+          </div>
+        </div>
+        {onClose && (
+          <button type="button" onClick={onClose} className="rounded-full p-1.5 hover:bg-white/10" aria-label="Close chat">
+            <X size={18} />
+          </button>
+        )}
+      </header>
+      {thread ? (
+        <Conversation thread={thread} onReset={() => setThreadId(null)} />
+      ) : (
+        <StartChat startedFrom={startedFrom} onStarted={(id) => setThreadId(id)} />
+      )}
+    </div>
+  )
+}
+
+function StartChat({ startedFrom, onStarted }: { startedFrom: Thread['startedFrom']; onStarted: (threadId: string) => void }) {
+  const { dispatch } = useStore()
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [text, setText] = useState('')
+  const submit = () => {
+    const r = dispatch({ type: 'CUSTOMER_START_CHAT', name, phone, text, startedFrom })
+    if (r.ok && r.threadId) onStarted(r.threadId)
+  }
+  return (
+    <form
+      className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5"
+      onSubmit={(e) => {
+        e.preventDefault()
+        submit()
+      }}
+    >
+      <div>
+        <h2 className="font-display text-2xl font-semibold">Chat with us</h2>
+        <p className="mt-1 text-sm text-muted">Ask about bouquets, colours, prices or delivery. We’ll reply right here.</p>
+      </div>
+      <Field label="Your name">
+        <input id="chat-name" className={inputClass} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+      </Field>
+      <Field label="Phone number" hint="So we can find your order and send M-Pesa payment requests.">
+        <input id="chat-phone" className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07…" inputMode="tel" autoComplete="tel" />
+      </Field>
+      <Field label="Message">
+        <textarea id="chat-first-message" className={inputClass} rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="Hi! I’d like…" />
+      </Field>
+      <div className="flex flex-wrap gap-1.5">
+        {STARTERS.map((s) => (
+          <button key={s} type="button" onClick={() => setText(s)} className="rounded-full border border-line-strong px-3 py-1 text-xs text-ink-2 hover:bg-surface-2">
+            {s}
+          </button>
+        ))}
+      </div>
+      <Button type="submit" variant="primary" className="w-full">
+        Start chat
+      </Button>
+    </form>
+  )
+}
+
+function Conversation({ thread, onReset }: { thread: Thread; onReset: () => void }) {
+  const { dispatch } = useStore()
+  const [text, setText] = useState('')
+  const end = useRef<HTMLDivElement>(null)
+  const live = useLiveSignals()
+  const notifyTyping = useMemo(() => makeTypingNotifier(thread.id, 'customer'), [thread.id])
+  usePresence(thread.id)
+  const unseen = customerUnread(thread)
+  const lastCustomer = [...thread.messages].reverse().find((m) => m.from === 'CUSTOMER')
+
+  // Mark replies as seen while the chat is open and visible.
+  useEffect(() => {
+    if (unseen > 0 && document.visibilityState === 'visible') dispatch({ type: 'CUSTOMER_READ', threadId: thread.id })
+  }, [unseen, thread.id, dispatch])
+
+  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [thread.messages.length])
+
+  const send = () => {
+    const r = dispatch({ type: 'CUSTOMER_SEND_MESSAGE', threadId: thread.id, text })
+    if (r.ok) setText('')
+  }
+
+  return (
+    <>
+      <div className="scroll-thin min-h-0 flex-1 space-y-2 overflow-y-auto bg-bg/50 px-4 py-4" aria-live="polite">
+        {thread.messages.map((m, i) => {
+          const prev = thread.messages[i - 1]
+          return (
+            <div key={m.id}>
+              {(!prev || !isSameDay(new Date(prev.at), new Date(m.at))) && <div className="my-2 text-center text-[11px] text-muted">{formatDate(m.at)}</div>}
+              <CustomerBubble message={m} />
+              {m.id === lastCustomer?.id && m.read && <div className="mt-0.5 text-right text-[10px] text-muted">Seen</div>}
+            </div>
+          )
+        })}
+        {live.isTyping(thread.id, 'shop') && <div className="text-xs italic text-muted">Whimsy &amp; Bloom is typing…</div>}
+        <div ref={end} />
+      </div>
+      <form
+        className="flex items-end gap-2 border-t border-line p-3"
+        onSubmit={(e) => {
+          e.preventDefault()
+          send()
+        }}
+      >
+        <textarea
+          id="chat-reply"
+          className={cx(inputClass, 'max-h-28 min-h-10 resize-none')}
+          rows={1}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value)
+            notifyTyping()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              send()
+            }
+          }}
+          placeholder="Type a message…"
+          aria-label="Message"
+        />
+        <Button type="submit" variant="primary" className="!h-10 !w-10 !px-0" aria-label="Send">
+          <Send size={16} />
+        </Button>
+      </form>
+      <button type="button" onClick={onReset} className="pb-2 text-center text-[11px] text-muted hover:text-ink">
+        Not you? Start a new chat
+      </button>
+    </>
+  )
+}
+
+function CustomerBubble({ message: m }: { message: Message }) {
+  if (m.from === 'SYSTEM') {
+    return (
+      <div className="flex justify-center">
+        <span className="rounded-full bg-green-wash px-3 py-1 text-center text-xs text-green-ink">{m.text}</span>
+      </div>
+    )
+  }
+  const mine = m.from === 'CUSTOMER'
+  return (
+    <div className={cx('flex', mine ? 'justify-end' : 'justify-start')}>
+      <div className={cx('max-w-[82%] rounded-2xl px-3.5 py-2 text-sm', mine ? 'rounded-br-md bg-pink text-[#3b1a24]' : 'rounded-bl-md border border-line bg-surface text-ink')}>
+        <p className="whitespace-pre-wrap">{m.text}</p>
+        {m.kind === 'PAYMENT_LINK' && m.orderId && <PaymentCard orderId={m.orderId} />}
+        <div className={cx('mt-0.5 text-right text-[10px]', mine ? 'opacity-70' : 'text-muted')}>{formatTime(m.at)}</div>
+      </div>
+    </div>
+  )
+}
+
+function PaymentCard({ orderId }: { orderId: string }) {
+  const { state, dispatch } = useStore()
+  const [paying, setPaying] = useState(false)
+  const order = state.orders.find((o) => o.id === orderId)
+
+  useEffect(() => {
+    if (!paying) return
+    // Stands in for the M-Pesa prompt on the customer's phone.
+    const timer = setTimeout(() => {
+      const ref = `S${Math.random().toString(36).slice(2, 11).toUpperCase()}`
+      dispatch({ type: 'CUSTOMER_PAY', orderId, reference: ref })
+      setPaying(false)
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [paying, orderId, dispatch])
+
+  if (!order) return null
+  const paid = order.payment.status !== 'UNPAID'
+  return (
+    <div className="mt-2 rounded-xl border border-line bg-surface-2 p-3">
+      <div className="text-xs text-muted">Order {order.number}</div>
+      <div className="text-sm font-medium">{orderSummary(state, order)}</div>
+      <div className="mt-0.5 text-base font-semibold">{formatKES(orderTotal(order))}</div>
+      {paid ? (
+        <div className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-green-ink">
+          <CircleCheck size={16} aria-hidden /> Paid
+        </div>
+      ) : order.status === 'CANCELLED' ? (
+        <div className="mt-2 text-sm text-muted">This order was cancelled.</div>
+      ) : paying ? (
+        <div className="mt-2 flex items-center gap-1.5 text-sm text-ink-2">
+          <Smartphone size={16} className="animate-pulse" aria-hidden /> Check your phone and enter your M-Pesa PIN…
+        </div>
+      ) : (
+        <Button variant="primary" size="sm" className="mt-2 w-full" onClick={() => setPaying(true)}>
+          <Smartphone size={14} aria-hidden /> Pay with M-Pesa
+        </Button>
+      )}
+    </div>
+  )
+}

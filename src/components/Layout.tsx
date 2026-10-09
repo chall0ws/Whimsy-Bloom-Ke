@@ -1,4 +1,4 @@
-import { Boxes, FileText, LayoutDashboard, Menu, MessageCircle, Monitor, Moon, Settings, ShieldCheck, ShoppingBag, Sun, Users, Wallet, X } from 'lucide-react'
+import { Boxes, FileText, LayoutDashboard, Menu, MessageCircle, MessagesSquare, Monitor, Moon, Settings, ShieldCheck, ShoppingBag, Sun, Users, Wallet, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { unreadTotals } from '../domain/metrics'
 import { href, type Route } from '../router'
@@ -6,7 +6,7 @@ import { useStore } from '../state/store'
 import { Logo } from './Logo'
 import { cx, UnreadBadge } from './ui'
 
-type NavItem = { route: Route; label: string; icon: typeof LayoutDashboard; badge?: number; superOnly?: boolean }
+type NavItem = { route: Route; label: string; icon: typeof LayoutDashboard; badge?: number; superOnly?: boolean; customerPage?: boolean }
 
 export function Layout({ route, children }: { route: Route; children: ReactNode }) {
   const { state, isSuperAdmin } = useStore()
@@ -15,16 +15,20 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
   const awaiting = state.orders.filter((o) => o.status === 'PENDING').length
 
   useEffect(() => setMenuOpen(false), [route])
+  useEffect(() => {
+    document.title = unread > 0 ? `(${unread}) Whimsy & Bloom` : 'Whimsy & Bloom'
+  }, [unread])
 
   const nav: NavItem[] = [
     { route: { page: 'overview' }, label: 'Overview', icon: LayoutDashboard },
     { route: { page: 'orders' }, label: 'Orders', icon: ShoppingBag, badge: awaiting },
-    { route: { page: 'inbox' }, label: 'Messages', icon: MessageCircle, badge: unread },
+    { route: { page: 'inbox' }, label: 'Live chat', icon: MessageCircle, badge: unread },
     { route: { page: 'customers' }, label: 'Customers', icon: Users },
     { route: { page: 'inventory' }, label: 'Materials', icon: Boxes },
     { route: { page: 'fees' }, label: 'Service fees', icon: Wallet },
     { route: { page: 'settings' }, label: 'Settings', icon: Settings, superOnly: true },
-    { route: { page: 'order-form' }, label: 'Order form', icon: FileText },
+    { route: { page: 'order-form' }, label: 'Order form', icon: FileText, customerPage: true },
+    { route: { page: 'chat' }, label: 'Chat page', icon: MessagesSquare, customerPage: true },
   ]
 
   const sidebar = (
@@ -32,8 +36,10 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
       <a href="#/" className="px-2">
         <Logo />
       </a>
-      <ul className="flex flex-col gap-0.5">
-        {nav
+      {[nav.filter((n) => !n.customerPage), nav.filter((n) => n.customerPage)].map((group, gi) => (
+      <ul key={gi} className="flex flex-col gap-0.5">
+        {gi === 1 && <li className="eyebrow px-3 pb-1">Customer pages</li>}
+        {group
           .filter((n) => !n.superOnly || isSuperAdmin)
           .map((n) => {
             const active = n.route.page === route.page
@@ -61,6 +67,7 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
             )
           })}
       </ul>
+      ))}
       <div className="mt-auto flex flex-col gap-3">
         <RoleSwitcher />
         <ThemeToggle />

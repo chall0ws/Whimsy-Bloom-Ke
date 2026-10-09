@@ -4,11 +4,12 @@ import { ChartCard, ColumnChart, HBarChart } from '../components/charts/charts'
 import { FeeTrackerCard } from '../components/fees'
 import { PageHeader } from '../components/Layout'
 import { CreateOrderDialog, OrderTable } from '../components/orders'
-import { Avatar, Card, ChannelIcon, cx, Segmented, UnreadBadge } from '../components/ui'
+import { Avatar, Card, cx, Segmented, UnreadBadge } from '../components/ui'
 import { formatDate, formatKES, formatNumber, relativeTime } from '../domain/format'
 import { customerGrowth, lastMessageAt, ordersToday, productPerformance, revenueSince, totalRevenue, unreadCount, unreadTotals } from '../domain/metrics'
 import { sortNewestFirst } from '../domain/orders'
 import type { OrderStatus } from '../domain/types'
+import { useLiveSignals } from '../state/live'
 import { useStore } from '../state/store'
 
 type Filter = 'ALL' | OrderStatus
@@ -75,7 +76,7 @@ export function Overview() {
           icon={MessageCircle}
           label="Messages"
           value={`${unread.messages} unread`}
-          detail={`Across ${unread.threads} ${unread.threads === 1 ? 'conversation' : 'conversations'}`}
+          detail={`Across ${unread.threads} live ${unread.threads === 1 ? 'chat' : 'chats'}`}
           href="#/inbox"
           highlight={unread.messages > 0}
         />
@@ -181,12 +182,13 @@ function Kpi({
 
 function MessagesPanel() {
   const { state } = useStore()
+  const live = useLiveSignals()
   const threads = [...state.threads].sort((a, b) => lastMessageAt(b).localeCompare(lastMessageAt(a))).slice(0, 5)
   const total = unreadTotals(state.threads).messages
   return (
     <Card
-      title="Consolidated messages"
-      subtitle="Instagram and Messenger in one place"
+      title="Live chat"
+      subtitle={state.chatStatus === 'ONLINE' ? 'You’re online · customers see quick replies' : 'You’re away · new chats get an automatic reply'}
       action={total > 0 ? <span className="rounded-full bg-pink-wash px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-pink-ink">{total} unread</span> : undefined}
       bodyClassName="px-2 pb-3 pt-3"
     >
@@ -198,17 +200,16 @@ function MessagesPanel() {
           return (
             <li key={t.id}>
               <a href={`#/inbox/${t.id}`} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-surface-2">
-                <Avatar name={customer?.name ?? t.handle} />
+                <span className="relative">
+                  <Avatar name={customer?.name ?? 'Customer'} />
+                  {live.isOnline(t.id) && <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-surface bg-[#3fa66b]" aria-label="Online now" />}
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className={cx('truncate text-sm', n ? 'font-semibold' : 'font-medium')}>{customer?.name ?? t.handle}</span>
-                    <span className="text-muted">
-                      <ChannelIcon channel={t.channel} size={12} />
-                    </span>
+                    <span className={cx('truncate text-sm', n ? 'font-semibold' : 'font-medium')}>{customer?.name ?? 'Customer'}</span>
                   </div>
                   <div className={cx('truncate text-xs', n ? 'text-ink' : 'text-muted')}>
-                    {last.from === 'SHOP' ? 'You: ' : ''}
-                    {last.text}
+                    {live.isTyping(t.id, 'customer') ? <em>typing…</em> : `${last.from === 'SHOP' ? 'You: ' : ''}${last.text}`}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -221,7 +222,7 @@ function MessagesPanel() {
         })}
       </ul>
       <a href="#/inbox" className="mx-3 mt-1 inline-flex items-center gap-1 text-sm font-medium text-ink-2 hover:text-ink">
-        Open inbox <ArrowRight size={14} aria-hidden />
+        Open live chat <ArrowRight size={14} aria-hidden />
       </a>
     </Card>
   )

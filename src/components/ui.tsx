@@ -1,4 +1,4 @@
-import { CircleCheck, Globe, TriangleAlert, X } from 'lucide-react'
+import { CircleCheck, Globe, MessageCircle, Phone, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { STATUS_LABEL } from '../domain/orders'
 import type { Channel, OrderStatus } from '../domain/types'
@@ -87,44 +87,10 @@ export function StatusChip({ status, className }: { status: OrderStatus; classNa
   )
 }
 
-export function InstagramIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <rect x="3" y="3" width="18" height="18" rx="5" />
-      <circle cx="12" cy="12" r="4" />
-      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
-    </svg>
-  )
-}
-
-export function MessengerIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M12 3C7 3 3 6.7 3 11.3c0 2.6 1.3 4.9 3.3 6.4V21l3-1.7c.9.3 1.8.4 2.7.4 5 0 9-3.7 9-8.4S17 3 12 3z" />
-      <path d="m7.5 13.5 3-3 2.5 2 3.5-3" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-export const CHANNEL_LABEL: Record<Channel, string> = {
-  INSTAGRAM: 'Instagram',
-  FACEBOOK: 'Messenger',
-  WEB_FORM: 'Web form',
-}
-
 export function ChannelIcon({ channel, size = 14 }: { channel: Channel; size?: number }) {
-  if (channel === 'INSTAGRAM') return <InstagramIcon size={size} />
-  if (channel === 'FACEBOOK') return <MessengerIcon size={size} />
+  if (channel === 'LIVE_CHAT') return <MessageCircle size={size} aria-hidden />
+  if (channel === 'MANUAL') return <Phone size={size} aria-hidden />
   return <Globe size={size} aria-hidden />
-}
-
-export function ChannelTag({ channel }: { channel: Channel }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">
-      <ChannelIcon channel={channel} size={12} />
-      {CHANNEL_LABEL[channel]}
-    </span>
-  )
 }
 
 const openModals: symbol[] = []
