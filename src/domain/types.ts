@@ -1,0 +1,204 @@
+export type Role = 'SUPER_ADMIN' | 'ADMIN'
+
+export interface User {
+  id: string
+  name: string
+  role: Role
+  title: string
+}
+
+/** Where an order or conversation came from. */
+export type Channel = 'INSTAGRAM' | 'FACEBOOK' | 'WEB_FORM'
+export type DmChannel = Exclude<Channel, 'WEB_FORM'>
+
+/**
+ * Order lifecycle:
+ *   PENDING_PAYMENT → PENDING → PROCESSING → SHIPPED → (REFUNDED)
+ * and CANCELLED from anything before SHIPPED.
+ */
+export type OrderStatus =
+  | 'PENDING_PAYMENT'
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'SHIPPED'
+  | 'CANCELLED'
+  | 'REFUNDED'
+
+/** SHIPPING goes by courier and carries a delivery fee; HAND_DELIVERY costs the customer nothing. */
+export type FulfilmentMethod = 'SHIPPING' | 'HAND_DELIVERY'
+export type PaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED'
+export type PaymentMethod = 'MPESA' | 'CARD'
+
+export interface Product {
+  id: string
+  name: string
+  price: number
+  blurb: string
+}
+
+export type MaterialUnit = 'roll' | 'sheet' | 'm' | 'pcs' | 'ml'
+
+export interface Material {
+  id: string
+  name: string
+  unit: MaterialUnit
+  onHand: number
+  reorderLevel: number
+}
+
+export interface RecipeLine {
+  materialId: string
+  qty: number
+}
+
+/** Materials used to make one unit of each product. */
+export type Recipes = Record<string, RecipeLine[]>
+
+export interface OrderItem {
+  productId: string
+  qty: number
+  unitPrice: number
+}
+
+export interface StatusEvent {
+  status: OrderStatus
+  at: string
+  by: string
+  note?: string
+}
+
+export interface Fulfilment {
+  method: FulfilmentMethod
+  address: string
+  deliveryFee: number
+  courier?: string
+  trackingNumber?: string
+}
+
+export interface Payment {
+  status: PaymentStatus
+  method?: PaymentMethod
+  reference?: string
+  paidAt?: string
+  linkSentAt?: string
+  refundedAmount?: number
+}
+
+export interface Order {
+  id: string
+  number: string
+  customerId: string
+  channel: Channel
+  sourceHandle?: string
+  threadId?: string
+  items: OrderItem[]
+  customisation: string
+  fulfilment: Fulfilment
+  payment: Payment
+  status: OrderStatus
+  createdAt: string
+  shippedAt?: string
+  history: StatusEvent[]
+  materialsDeducted: boolean
+}
+
+export interface Customer {
+  id: string
+  name: string
+  instagram?: string
+  facebook?: string
+  phone?: string
+  email?: string
+  notes: string
+  tags: string[]
+  createdAt: string
+}
+
+export type MessageSender = 'CUSTOMER' | 'SHOP' | 'SYSTEM'
+
+export interface Message {
+  id: string
+  from: MessageSender
+  text: string
+  at: string
+  read: boolean
+  /** User id of the shop member who sent it, for SHOP messages. */
+  by?: string
+}
+
+export interface Thread {
+  id: string
+  channel: DmChannel
+  customerId: string
+  handle: string
+  messages: Message[]
+}
+
+/** One service-fee charge. Written once when an order ships and never removed. */
+export interface FeeEntry {
+  id: string
+  orderId: string
+  orderNumber: string
+  amount: number
+  at: string
+}
+
+export interface Payout {
+  id: string
+  amount: number
+  reference: string
+  sentAt: string
+  sentBy: string
+  status: 'SENT' | 'CONFIRMED'
+  confirmedAt?: string
+  confirmedBy?: string
+}
+
+export type MovementReason = 'PURCHASE' | 'ORDER' | 'ORDER_REVERSAL'
+
+export interface MaterialMovement {
+  id: string
+  materialId: string
+  delta: number
+  reason: MovementReason
+  orderNumber?: string
+  note?: string
+  at: string
+  by: string
+}
+
+export interface AuditEvent {
+  id: string
+  at: string
+  by: string
+  text: string
+}
+
+export interface Settings {
+  serviceFee: number
+  feeOnHandDelivery: boolean
+  defaultShippingFee: number
+  payoutSchedule: 'WEEKLY' | 'MONTHLY'
+}
+
+export interface AppState {
+  version: number
+  users: User[]
+  currentUserId: string
+  products: Product[]
+  materials: Material[]
+  recipes: Recipes
+  customers: Customer[]
+  orders: Order[]
+  threads: Thread[]
+  fees: FeeEntry[]
+  payouts: Payout[]
+  movements: MaterialMovement[]
+  audit: AuditEvent[]
+  settings: Settings
+  nextOrderNumber: number
+  nextId: number
+}
+
+/** Actor id used for orders that customers place themselves through the web form. */
+export const CUSTOMER_ACTOR = 'customer'

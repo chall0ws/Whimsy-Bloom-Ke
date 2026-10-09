@@ -1,0 +1,168 @@
+@import 'tailwindcss';
+@import '@fontsource/cormorant-garamond/latin-500.css';
+@import '@fontsource/cormorant-garamond/latin-600.css';
+
+/*
+ * Brand tokens. Soft pink, deep green and taupe on a warm cream page.
+ * Dark mode is its own set of steps, chosen for the dark surface, not an inversion.
+ */
+:root {
+  color-scheme: light;
+  --bg: #f8f3ee;
+  --surface: #fffcf9;
+  --surface-2: #f4ece5;
+  --ink: #1e2a23;
+  --ink-2: #4c5851;
+  --muted: #7d756e;
+  --line: #ebe1d8;
+  --line-strong: #d7c9bd;
+  --green: #2f4f3e;
+  --on-green: #fdf8f3;
+  --green-wash: #e2ebe4;
+  --green-ink: #2b5a41;
+  --pink: #f2bccb;
+  --pink-ink: #a8445f;
+  --pink-wash: #fbe8ed;
+  --taupe: #9c8a7a;
+  --taupe-ink: #6e5f52;
+  --taupe-wash: #efe6de;
+  --amber-wash: #fcefd2;
+  --amber-ink: #85570a;
+  --red-wash: #fbe2df;
+  --red-ink: #a3332e;
+  --gray-wash: #ece8e4;
+  --gray-ink: #635d58;
+  --chart-1: #2f4f3e;
+  --grid: #ece3da;
+  --axis: #d7c9bd;
+  --shadow: 0 1px 2px rgb(60 40 30 / 0.04), 0 4px 16px rgb(60 40 30 / 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) {
+    color-scheme: dark;
+    --bg: #121614;
+    --surface: #1a1f1c;
+    --surface-2: #222925;
+    --ink: #f3eee9;
+    --ink-2: #cbc4bc;
+    --muted: #958e87;
+    --line: #2b332e;
+    --line-strong: #3a443e;
+    --green: #8fc0a2;
+    --on-green: #12201a;
+    --green-wash: #213328;
+    --green-ink: #9fd0b2;
+    --pink: #f2bccb;
+    --pink-ink: #f2aec0;
+    --pink-wash: #3a2329;
+    --taupe: #bba897;
+    --taupe-ink: #d4c3b3;
+    --taupe-wash: #2e2924;
+    --amber-wash: #3a2e14;
+    --amber-ink: #f0c56b;
+    --red-wash: #3b1f1d;
+    --red-ink: #f1a29c;
+    --gray-wash: #2a2d2b;
+    --gray-ink: #b5afa9;
+    --chart-1: #8fc0a2;
+    --grid: #262d29;
+    --axis: #3a443e;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #121614;
+  --surface: #1a1f1c;
+  --surface-2: #222925;
+  --ink: #f3eee9;
+  --ink-2: #cbc4bc;
+  --muted: #958e87;
+  --line: #2b332e;
+  --line-strong: #3a443e;
+  --green: #8fc0a2;
+  --on-green: #12201a;
+  --green-wash: #213328;
+  --green-ink: #9fd0b2;
+  --pink: #f2bccb;
+  --pink-ink: #f2aec0;
+  --pink-wash: #3a2329;
+  --taupe: #bba897;
+  --taupe-ink: #d4c3b3;
+  --taupe-wash: #2e2924;
+  --amber-wash: #3a2e14;
+  --amber-ink: #f0c56b;
+  --red-wash: #3b1f1d;
+  --red-ink: #f1a29c;
+  --gray-wash: #2a2d2b;
+  --gray-ink: #b5afa9;
+  --chart-1: #8fc0a2;
+  --grid: #262d29;
+  --axis: #3a443e;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-green: var(--green);
+  --color-on-green: var(--on-green);
+  --color-green-wash: var(--green-wash);
+  --color-green-ink: var(--green-ink);
+  --color-pink: var(--pink);
+  --color-pink-ink: var(--pink-ink);
+  --color-pink-wash: var(--pink-wash);
+  --color-taupe: var(--taupe);
+  --color-taupe-ink: var(--taupe-ink);
+  --color-taupe-wash: var(--taupe-wash);
+  --color-amber-wash: var(--amber-wash);
+  --color-amber-ink: var(--amber-ink);
+  --color-red-wash: var(--red-wash);
+  --color-red-ink: var(--red-ink);
+  --color-gray-wash: var(--gray-wash);
+  --color-gray-ink: var(--gray-ink);
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --shadow-card: var(--shadow);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+:focus-visible {
+  outline: 2px solid var(--pink-ink);
+  outline-offset: 2px;
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
