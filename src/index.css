@@ -1,106 +1,79 @@
 @import 'tailwindcss';
 @import '@fontsource/cormorant-garamond/latin-500.css';
 @import '@fontsource/cormorant-garamond/latin-600.css';
+@import '@fontsource/cormorant-garamond/latin-700.css';
+@import '@fontsource/allura/latin-400.css';
 
 /*
- * Brand tokens. Soft pink, deep green and taupe on a warm cream page.
- * Dark mode is its own set of steps, chosen for the dark surface, not an inversion.
+ * Brand tokens, taken from the Whimsy & Bloom "We are OPEN!" poster:
+ * blush-cream paper, olive green lettering, dusty-rose script and soft pink petals.
+ * The brand look is light. Dark mode only applies when someone picks it from the toggle.
  */
 :root {
   color-scheme: light;
-  --bg: #f8f3ee;
-  --surface: #fffcf9;
-  --surface-2: #f4ece5;
-  --ink: #1e2a23;
-  --ink-2: #4c5851;
-  --muted: #7d756e;
-  --line: #ebe1d8;
-  --line-strong: #d7c9bd;
-  --green: #2f4f3e;
-  --on-green: #fdf8f3;
-  --green-wash: #e2ebe4;
-  --green-ink: #2b5a41;
-  --pink: #f2bccb;
-  --pink-ink: #a8445f;
-  --pink-wash: #fbe8ed;
-  --taupe: #9c8a7a;
-  --taupe-ink: #6e5f52;
-  --taupe-wash: #efe6de;
-  --amber-wash: #fcefd2;
+  --bg: #faf2ec;
+  --surface: #fffbf8;
+  --surface-2: #f7ece6;
+  --ink: #3e3833;
+  --ink-2: #675e57;
+  --muted: #7f736c;
+  --line: #f0e3db;
+  --line-strong: #e4d2c7;
+  --green: #5c6b3e;
+  --on-green: #fffbf6;
+  --green-wash: #eef0e2;
+  --green-ink: #4f5d33;
+  --pink: #f2c4ca;
+  --pink-ink: #a9566a;
+  --pink-wash: #fbe9ec;
+  --taupe: #c9b2a3;
+  --taupe-ink: #7a6658;
+  --taupe-wash: #f4e9e1;
+  --amber-wash: #fbefd6;
   --amber-ink: #85570a;
-  --red-wash: #fbe2df;
+  --red-wash: #fbe3e0;
   --red-ink: #a3332e;
-  --gray-wash: #ece8e4;
-  --gray-ink: #635d58;
-  --chart-1: #2f4f3e;
-  --grid: #ece3da;
-  --axis: #d7c9bd;
-  --shadow: 0 1px 2px rgb(60 40 30 / 0.04), 0 4px 16px rgb(60 40 30 / 0.05);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme='light'])) {
-    color-scheme: dark;
-    --bg: #121614;
-    --surface: #1a1f1c;
-    --surface-2: #222925;
-    --ink: #f3eee9;
-    --ink-2: #cbc4bc;
-    --muted: #958e87;
-    --line: #2b332e;
-    --line-strong: #3a443e;
-    --green: #8fc0a2;
-    --on-green: #12201a;
-    --green-wash: #213328;
-    --green-ink: #9fd0b2;
-    --pink: #f2bccb;
-    --pink-ink: #f2aec0;
-    --pink-wash: #3a2329;
-    --taupe: #bba897;
-    --taupe-ink: #d4c3b3;
-    --taupe-wash: #2e2924;
-    --amber-wash: #3a2e14;
-    --amber-ink: #f0c56b;
-    --red-wash: #3b1f1d;
-    --red-ink: #f1a29c;
-    --gray-wash: #2a2d2b;
-    --gray-ink: #b5afa9;
-    --chart-1: #8fc0a2;
-    --grid: #262d29;
-    --axis: #3a443e;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-  }
+  --gray-wash: #efe9e5;
+  --gray-ink: #615a55;
+  --chart-1: #6b7c49;
+  --grid: #f0e3db;
+  --axis: #e4d2c7;
+  --glow-pink: rgb(242 196 202 / 0.45);
+  --glow-sage: rgb(198 210 168 / 0.35);
+  --shadow: 0 1px 2px rgb(120 80 70 / 0.05), 0 6px 20px rgb(169 86 106 / 0.07);
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #121614;
-  --surface: #1a1f1c;
-  --surface-2: #222925;
-  --ink: #f3eee9;
-  --ink-2: #cbc4bc;
-  --muted: #958e87;
-  --line: #2b332e;
-  --line-strong: #3a443e;
-  --green: #8fc0a2;
-  --on-green: #12201a;
-  --green-wash: #213328;
-  --green-ink: #9fd0b2;
-  --pink: #f2bccb;
-  --pink-ink: #f2aec0;
-  --pink-wash: #3a2329;
-  --taupe: #bba897;
-  --taupe-ink: #d4c3b3;
-  --taupe-wash: #2e2924;
+  --bg: #1b1716;
+  --surface: #241f1d;
+  --surface-2: #2d2725;
+  --ink: #f6eee8;
+  --ink-2: #d4c8c0;
+  --muted: #a3968e;
+  --line: #352e2b;
+  --line-strong: #463d39;
+  --green: #b5c38e;
+  --on-green: #1b1716;
+  --green-wash: #2c3122;
+  --green-ink: #c3d09e;
+  --pink: #f0a9b3;
+  --pink-ink: #f3b4bd;
+  --pink-wash: #3d2529;
+  --taupe: #a8968a;
+  --taupe-ink: #d6c3b5;
+  --taupe-wash: #322a26;
   --amber-wash: #3a2e14;
   --amber-ink: #f0c56b;
   --red-wash: #3b1f1d;
   --red-ink: #f1a29c;
-  --gray-wash: #2a2d2b;
-  --gray-ink: #b5afa9;
-  --chart-1: #8fc0a2;
-  --grid: #262d29;
-  --axis: #3a443e;
+  --gray-wash: #2e2a28;
+  --gray-ink: #b9b0aa;
+  --chart-1: #b5c38e;
+  --grid: #352e2b;
+  --axis: #463d39;
+  --glow-pink: rgb(240 169 179 / 0.08);
+  --glow-sage: rgb(181 195 142 / 0.06);
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
 }
 
@@ -130,6 +103,7 @@
   --color-gray-wash: var(--gray-wash);
   --color-gray-ink: var(--gray-ink);
   --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-script: 'Allura', 'Segoe Script', cursive;
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --shadow-card: var(--shadow);
 }
@@ -138,6 +112,20 @@ html,
 body {
   background: var(--bg);
   color: var(--ink);
+}
+
+/* Soft petal-coloured glows in the corners, like the light on the poster. */
+body {
+  background-image:
+    radial-gradient(900px 520px at 100% -10%, var(--glow-pink), transparent 70%),
+    radial-gradient(700px 480px at -10% 105%, var(--glow-sage), transparent 70%);
+  background-attachment: fixed;
+}
+
+.font-script {
+  font-family: var(--font-script);
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 body {

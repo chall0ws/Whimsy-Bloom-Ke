@@ -1,10 +1,11 @@
-import { Boxes, CircleUserRound, FileText, LayoutDashboard, LogOut, Menu, MessageCircle, MessagesSquare, Monitor, Moon, Settings, ShieldCheck, ShoppingBag, Sun, Users, Wallet, X } from 'lucide-react'
+import { Boxes, CircleUserRound, FileText, LayoutDashboard, LogOut, Menu, MessageCircle, MessagesSquare, Moon, Settings, ShieldCheck, ShoppingBag, Sun, Users, Wallet, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { useEffect, useState, type ReactNode } from 'react'
 import { unreadTotals } from '../domain/metrics'
 import { href, type Route } from '../router'
 import { useStore } from '../state/store'
-import { Logo } from './Logo'
+import { applyTheme, readTheme, saveTheme, type Theme } from '../theme'
+import { Logo, Script } from './Logo'
 import { Avatar, cx, UnreadBadge } from './ui'
 
 type NavItem = { route: Route; label: string; icon: typeof LayoutDashboard; badge?: number; superOnly?: boolean; customerPage?: boolean }
@@ -35,7 +36,7 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
 
   const sidebar = (
     <nav className="flex h-full flex-col gap-6 px-4 py-5" aria-label="Main">
-      <a href="#/" className="px-2">
+      <a href="#/" className="px-1">
         <Logo />
       </a>
       {[nav.filter((n) => !n.customerPage), nav.filter((n) => n.customerPage)].map((group, gi) => (
@@ -139,31 +140,14 @@ function AccountCard() {
   )
 }
 
-type Theme = 'system' | 'light' | 'dark'
-
-function readTheme(): Theme {
-  try {
-    const t = localStorage.getItem('whimsy-bloom:theme')
-    return t === 'light' || t === 'dark' ? t : 'system'
-  } catch {
-    return 'system'
-  }
-}
-
 function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(readTheme)
   useEffect(() => {
-    if (theme === 'system') document.documentElement.removeAttribute('data-theme')
-    else document.documentElement.setAttribute('data-theme', theme)
-    try {
-      localStorage.setItem('whimsy-bloom:theme', theme)
-    } catch {
-      // Remembering the theme is a nicety only.
-    }
+    applyTheme(theme)
+    saveTheme(theme)
   }, [theme])
   const options: [Theme, typeof Sun, string][] = [
     ['light', Sun, 'Light'],
-    ['system', Monitor, 'System'],
     ['dark', Moon, 'Dark'],
   ]
   return (
@@ -174,23 +158,22 @@ function ThemeToggle() {
           type="button"
           role="radio"
           aria-checked={theme === value}
-          aria-label={label}
-          title={label}
           onClick={() => setTheme(value)}
-          className={cx('flex h-7 flex-1 items-center justify-center rounded-full', theme === value ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
+          className={cx('flex h-7 flex-1 items-center justify-center gap-1.5 rounded-full text-xs font-medium', theme === value ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
         >
-          <Icon size={14} />
+          <Icon size={13} aria-hidden /> {label}
         </button>
       ))}
     </div>
   )
 }
 
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
+export function PageHeader({ title, subtitle, actions, script }: { title: string; subtitle?: ReactNode; actions?: ReactNode; script?: string }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="font-display text-3xl font-semibold leading-tight sm:text-4xl">{title}</h1>
+      <div className="relative">
+        {script && <Script className="-mb-1 block text-3xl leading-none sm:text-4xl">{script}</Script>}
+        <h1 className="font-display text-3xl font-semibold leading-tight text-green-ink sm:text-[2.6rem]">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}

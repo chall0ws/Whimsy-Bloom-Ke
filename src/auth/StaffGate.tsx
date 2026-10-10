@@ -1,6 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
-import { BloomMark, Logo } from '../components/Logo'
+import { BloomMark, HeartDivider, Logo, Script, Sparkles } from '../components/Logo'
 import { Button } from '../components/ui'
 import { staffRoleFor } from '../domain/auth'
 import { useStore } from '../state/store'
@@ -44,10 +44,14 @@ function StaffSignIn() {
   const { signInWithGoogle, mode } = useAuth()
   return (
     <Centered>
-      <div className="rounded-3xl border border-line bg-surface p-8 text-center shadow-card">
+      <div className="relative rounded-b-3xl rounded-t-[180px] border border-line-strong bg-surface px-8 pb-8 pt-12 text-center shadow-card">
+        <Sparkles className="absolute left-6 top-24 w-12" />
+        <Sparkles className="absolute right-5 top-36 w-10 -scale-x-100" />
         <Logo className="justify-center" />
-        <h1 className="mt-8 font-display text-3xl font-semibold">Team sign-in</h1>
-        <p className="mt-2 text-sm text-muted">Sign in with the Google account the Whimsy &amp; Bloom team uses.</p>
+        <Script className="mt-8 block text-4xl leading-none">Welcome back</Script>
+        <h1 className="font-display text-3xl font-semibold text-green-ink">Team sign-in</h1>
+        <HeartDivider className="mx-auto mt-3 w-40" />
+        <p className="mt-3 text-sm text-ink-2">Sign in with the Google account the Whimsy &amp; Bloom team uses.</p>
         <div className="mt-6">
           <GoogleButton onClick={() => signInWithGoogle(window.location.hash || '#/')} />
         </div>
