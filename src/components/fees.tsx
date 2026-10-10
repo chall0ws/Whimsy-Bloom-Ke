@@ -45,7 +45,7 @@ export function FeeTrackerCard() {
         <Button variant="primary" size="sm" onClick={() => setPaying(true)} disabled={summary.availableToSend <= 0}>
           <Banknote size={14} aria-hidden /> Record payout
         </Button>
-        <a href="#/fees" className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-medium text-ink-2 hover:bg-surface-2">
+        <a href="#/admin/fees" className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-medium text-ink-2 hover:bg-surface-2">
           {isSuperAdmin && waiting.length > 0 ? `Confirm ${waiting.length} payout${waiting.length > 1 ? 's' : ''}` : 'Fee ledger'} <ArrowRight size={13} aria-hidden />
         </a>
       </div>

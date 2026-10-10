@@ -1,8 +1,8 @@
-import { Boxes, CircleUserRound, FileText, LayoutDashboard, LogOut, Menu, MessageCircle, MessagesSquare, Moon, Settings, ShieldCheck, ShoppingBag, Sun, Users, Wallet, X } from 'lucide-react'
+import { Boxes, CircleUserRound, LayoutDashboard, LogOut, Menu, MessageCircle, MessagesSquare, Moon, Settings, ShieldCheck, ShoppingBag, Store, Sun, Users, Wallet, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { useEffect, useState, type ReactNode } from 'react'
 import { unreadTotals } from '../domain/metrics'
-import { href, type Route } from '../router'
+import { href, type AdminRoute, type Route } from '../router'
 import { useStore } from '../state/store'
 import { applyTheme, readTheme, saveTheme, type Theme } from '../theme'
 import { Logo, Script } from './Logo'
@@ -10,7 +10,7 @@ import { Avatar, cx, UnreadBadge } from './ui'
 
 type NavItem = { route: Route; label: string; icon: typeof LayoutDashboard; badge?: number; superOnly?: boolean; customerPage?: boolean }
 
-export function Layout({ route, children }: { route: Route; children: ReactNode }) {
+export function Layout({ route, children }: { route: AdminRoute; children: ReactNode }) {
   const { state, isSuperAdmin } = useStore()
   const [menuOpen, setMenuOpen] = useState(false)
   const unread = unreadTotals(state.threads).messages
@@ -29,14 +29,14 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
     { route: { page: 'inventory' }, label: 'Materials', icon: Boxes },
     { route: { page: 'fees' }, label: 'Service fees', icon: Wallet },
     { route: { page: 'settings' }, label: 'Settings', icon: Settings, superOnly: true },
-    { route: { page: 'order-form' }, label: 'Order form', icon: FileText, customerPage: true },
+    { route: { page: 'home' }, label: 'Shop', icon: Store, customerPage: true },
     { route: { page: 'chat' }, label: 'Chat page', icon: MessagesSquare, customerPage: true },
-    { route: { page: 'portal' }, label: 'Client portal', icon: CircleUserRound, customerPage: true },
+    { route: { page: 'account' }, label: 'My account', icon: CircleUserRound, customerPage: true },
   ]
 
   const sidebar = (
     <nav className="flex h-full flex-col gap-6 px-4 py-5" aria-label="Main">
-      <a href="#/" className="px-1">
+      <a href="#/admin" className="px-1">
         <Logo />
       </a>
       {[nav.filter((n) => !n.customerPage), nav.filter((n) => n.customerPage)].map((group, gi) => (
@@ -83,7 +83,7 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-line bg-surface lg:block">{sidebar}</aside>
 
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-surface/95 px-4 py-3 backdrop-blur lg:hidden">
-        <a href="#/">
+        <a href="#/admin">
           <Logo compact />
         </a>
         <button type="button" onClick={() => setMenuOpen(true)} className="relative rounded-full p-2 hover:bg-surface-2" aria-label="Open menu">

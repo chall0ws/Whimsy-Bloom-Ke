@@ -5,13 +5,14 @@ import { Button } from '../components/ui'
 import { staffRoleFor } from '../domain/auth'
 import { useStore } from '../state/store'
 import { CONFIGURED_STAFF, useAuth } from './AuthProvider'
-import { GoogleButton } from './GoogleButton'
+import { AuthPanel } from './AuthPanel'
 
 /** The dashboard role of whoever is signed in, or null if they aren't on the team. */
 export function useStaffRole() {
   const { account } = useAuth()
   const { state } = useStore()
-  return account ? staffRoleFor(account.email, CONFIGURED_STAFF, state.users) : null
+  // Only a verified address counts, or anyone could create a password account with a team email.
+  return account?.verified ? staffRoleFor(account.email, CONFIGURED_STAFF, state.users) : null
 }
 
 /** Lets only team members into the dashboard. */
@@ -28,7 +29,7 @@ export function StaffGate({ children }: { children: ReactNode }) {
 
   if (loading || (account && role && !ready)) return <Centered>{null}</Centered>
   if (!account) return <StaffSignIn />
-  if (!role) return <NotOnTeam email={account.email} />
+  if (!role) return <NotOnTeam email={account.email} unverifiedTeamEmail={!account.verified && Boolean(staffRoleFor(account.email, CONFIGURED_STAFF, state.users))} />
   return <>{children}</>
 }
 
@@ -41,7 +42,7 @@ function Centered({ children }: { children: ReactNode }) {
 }
 
 function StaffSignIn() {
-  const { signInWithGoogle, mode } = useAuth()
+  const { mode } = useAuth()
   return (
     <Centered>
       <div className="relative rounded-b-3xl rounded-t-[180px] border border-line-strong bg-surface px-8 pb-8 pt-12 text-center shadow-card">
@@ -51,45 +52,40 @@ function StaffSignIn() {
         <Script className="mt-8 block text-4xl leading-none">Welcome back</Script>
         <h1 className="font-display text-3xl font-semibold text-green-ink">Team sign-in</h1>
         <HeartDivider className="mx-auto mt-3 w-40" />
-        <p className="mt-3 text-sm text-ink-2">Sign in with the Google account the Whimsy &amp; Bloom team uses.</p>
-        <div className="mt-6">
-          <GoogleButton onClick={() => signInWithGoogle(window.location.hash || '#/')} />
-        </div>
+        <p className="mt-3 text-sm text-ink-2">Sign in with the account the Whimsy &amp; Bloom team uses.</p>
+        <AuthPanel className="mt-6 text-left" returnTo={window.location.hash || '#/admin'} defaultMode="signin" />
         {mode === 'demo' && (
           <p className="mt-4 rounded-xl bg-surface-2 px-3 py-2 text-xs text-ink-2">
-            Demo mode: Google login isn’t switched on yet, so you pick a demo account. The setup guide is in <code>docs/google-login.md</code>.
+            Demo: use <strong>Continue with Google</strong> and pick <em>Partner</em> or <em>Owner</em>. Setup guide: <code>docs/google-login.md</code>.
           </p>
         )}
       </div>
-      <a href="#/portal" className="mt-5 flex items-center justify-center gap-1 text-sm font-medium text-ink-2 hover:text-ink">
-        Shopping with us? Go to the client portal <ArrowRight size={14} aria-hidden />
+      <a href="#/" className="mt-5 flex items-center justify-center gap-1 text-sm font-medium text-ink-2 hover:text-ink">
+        Shopping with us? Go to the shop <ArrowRight size={14} aria-hidden />
       </a>
     </Centered>
   )
 }
 
-function NotOnTeam({ email }: { email: string }) {
-  const { signOut, signInWithGoogle } = useAuth()
+function NotOnTeam({ email, unverifiedTeamEmail }: { email: string; unverifiedTeamEmail: boolean }) {
+  const { signOut } = useAuth()
   return (
     <Centered>
       <div className="rounded-3xl border border-line bg-surface p-8 text-center shadow-card">
         <BloomMark size={48} className="mx-auto" />
         <h1 className="mt-4 font-display text-2xl font-semibold">This account isn’t on the team</h1>
         <p className="mt-2 text-sm text-muted">
-          <strong className="text-ink">{email}</strong> can’t open the dashboard. If you’re a customer, your orders are in the client portal.
+          <strong className="text-ink">{email}</strong> can’t open the dashboard.{' '}
+          {unverifiedTeamEmail
+            ? 'This email is on the team, but it hasn’t been confirmed. Sign in with Google, or open the confirmation link we emailed you.'
+            : 'If you’re a customer, your orders are in My account.'}
         </p>
         <div className="mt-6 flex flex-col gap-2">
-          <a href="#/portal" className="inline-flex h-11 items-center justify-center rounded-full bg-green px-5 text-sm font-medium text-on-green">
-            Go to the client portal
+          <a href="#/account" className="inline-flex h-11 items-center justify-center rounded-full bg-green px-5 text-sm font-medium text-on-green">
+            Go to My account
           </a>
-          <Button
-            variant="ghost"
-            onClick={async () => {
-              await signOut()
-              signInWithGoogle('#/')
-            }}
-          >
-            Use a different Google account
+          <Button variant="ghost" onClick={() => signOut()}>
+            Use a different account
           </Button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { ArrowRight, FileText, MessageCircle, Plus, ShoppingBag, Wallet } from 'lucide-react'
+import { ArrowRight, MessageCircle, Plus, ShoppingBag, Store, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import { ChartCard, ColumnChart, HBarChart } from '../components/charts/charts'
 import { FeeTrackerCard } from '../components/fees'
@@ -54,8 +54,8 @@ export function Overview() {
         subtitle={now.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         actions={
           <>
-            <a href="#/order-form" className="inline-flex h-10 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-4 text-sm font-medium hover:bg-surface-2">
-              <FileText size={15} aria-hidden /> Order form
+            <a href="#/" className="inline-flex h-10 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-4 text-sm font-medium hover:bg-surface-2">
+              <Store size={15} aria-hidden /> View shop
             </a>
             <button type="button" onClick={() => setCreating(true)} className="inline-flex h-10 items-center gap-1.5 rounded-full bg-green px-4 text-sm font-medium text-on-green hover:opacity-90">
               <Plus size={16} aria-hidden /> New order
@@ -70,7 +70,7 @@ export function Overview() {
           label="Orders today"
           value={formatNumber(today.length)}
           detail={`${count('PENDING_PAYMENT')} awaiting payment · ${count('PENDING')} to start`}
-          href="#/orders"
+          href="#/admin/orders"
         />
         <Kpi icon={Wallet} label="Total revenue (KES)" value={formatKES(totalRevenue(state.orders))} detail={`${formatKES(revenueSince(state.orders, monthStart))} this month`} />
         <Kpi
@@ -78,7 +78,7 @@ export function Overview() {
           label="Messages"
           value={`${unread.messages} unread`}
           detail={`Across ${unread.threads} live ${unread.threads === 1 ? 'chat' : 'chats'}`}
-          href="#/inbox"
+          href="#/admin/inbox"
           highlight={unread.messages > 0}
         />
       </div>
@@ -89,7 +89,7 @@ export function Overview() {
           title="Order management"
           subtitle="Newest first. Tap a status to move an order along."
           action={
-            <a href="#/orders" className="inline-flex items-center gap-1 text-sm font-medium text-ink-2 hover:text-ink">
+            <a href="#/admin/orders" className="inline-flex items-center gap-1 text-sm font-medium text-ink-2 hover:text-ink">
               All orders <ArrowRight size={14} aria-hidden />
             </a>
           }
@@ -200,7 +200,7 @@ function MessagesPanel() {
           const n = unreadCount(t)
           return (
             <li key={t.id}>
-              <a href={`#/inbox/${t.id}`} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-surface-2">
+              <a href={`#/admin/inbox/${t.id}`} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-surface-2">
                 <span className="relative">
                   <Avatar name={customer?.name ?? 'Customer'} />
                   {live.isOnline(t.id) && <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-surface bg-[#3fa66b]" aria-label="Online now" />}
@@ -222,7 +222,7 @@ function MessagesPanel() {
           )
         })}
       </ul>
-      <a href="#/inbox" className="mx-3 mt-1 inline-flex items-center gap-1 text-sm font-medium text-ink-2 hover:text-ink">
+      <a href="#/admin/inbox" className="mx-3 mt-1 inline-flex items-center gap-1 text-sm font-medium text-ink-2 hover:text-ink">
         Open live chat <ArrowRight size={14} aria-hidden />
       </a>
     </Card>

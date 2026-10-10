@@ -9,35 +9,45 @@ import { Customers } from './pages/Customers'
 import { Fees } from './pages/Fees'
 import { Inbox } from './pages/Inbox'
 import { Inventory } from './pages/Inventory'
-import { OrderForm } from './pages/OrderForm'
 import { Orders } from './pages/Orders'
 import { Overview } from './pages/Overview'
-import { Portal } from './pages/portal/Portal'
 import { Settings } from './pages/Settings'
-import { useRoute } from './router'
+import { isAdminRoute, useRoute } from './router'
+import { AccountPage } from './shop/Account'
+import { Catalog, Home, ProductPage } from './shop/Browse'
+import { CartProvider } from './shop/cart'
+import { CartPage, Checkout, Thanks } from './shop/Checkout'
+import { ShopLayout } from './shop/ShopLayout'
 import { StoreProvider } from './state/store'
 import { applyTheme, readTheme } from './theme'
 
 function Page() {
   const route = useRoute()
-  const customerPage = route.page === 'chat' || route.page === 'order-form' || route.page === 'portal'
+  const admin = isAdminRoute(route)
 
-  // Customer pages always wear the brand look; the dashboard follows the team member's choice.
-  useEffect(() => applyTheme(customerPage ? 'light' : readTheme()), [customerPage])
+  // The shop always wears the brand look; the dashboard follows the team member's choice.
+  useEffect(() => applyTheme(admin ? readTheme() : 'light'), [admin])
 
-  // Customer-facing pages: open to everyone, no dashboard around them.
-  if (customerPage) {
+  if (!isAdminRoute(route)) {
+    // The shop is the front door: open to everyone, no sign-in needed to browse or buy.
     return (
       <>
-        {route.page === 'chat' && <CustomerChat />}
-        {route.page === 'order-form' && <OrderForm />}
-        {route.page === 'portal' && <Portal tab={route.tab} />}
+        <ShopLayout route={route}>
+          {route.page === 'home' && <Home />}
+          {route.page === 'shop' && <Catalog />}
+          {route.page === 'product' && <ProductPage productId={route.productId} />}
+          {route.page === 'cart' && <CartPage />}
+          {route.page === 'checkout' && <Checkout />}
+          {route.page === 'thanks' && <Thanks orderId={route.orderId} />}
+          {route.page === 'account' && <AccountPage tab={route.tab} />}
+          {route.page === 'chat' && <CustomerChat />}
+        </ShopLayout>
         <Toasts />
       </>
     )
   }
 
-  // Everything else is the dashboard, for signed-in team members only.
+  // The dashboard, under #/admin, for signed-in team members only.
   return (
     <StaffGate>
       <Layout route={route}>
@@ -59,7 +69,9 @@ export default function App() {
   return (
     <AuthProvider>
       <StoreProvider>
-        <Page />
+        <CartProvider>
+          <Page />
+        </CartProvider>
       </StoreProvider>
     </AuthProvider>
   )

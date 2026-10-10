@@ -47,8 +47,8 @@ function loadState(now: Date): AppState {
   return { ...(readStored() ?? createSeedState(now)), currentUserId: '' }
 }
 
-/** Customer-facing pages don't show team notifications. */
-const onCustomerPage = () => /^#\/?(chat|portal|order-form)/.test(window.location.hash)
+/** Only the dashboard (#/admin) shows team notifications; everything else is the shop. */
+const onCustomerPage = () => !/^#\/?admin/.test(window.location.hash)
 
 function saveState(state: AppState) {
   try {

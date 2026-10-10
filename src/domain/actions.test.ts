@@ -390,6 +390,33 @@ describe('client portal', () => {
     expect(applyAction(placed.state, { type: 'CUSTOMER_PAY', orderId: order.id, reference: 'X1', customerId }, NOW).ok).toBe(true)
   })
 
+  it('saves a guest order to the account created right after checkout', () => {
+    const placed = applyAction(
+      emptyState({ currentUserId: '' }),
+      { type: 'CUSTOMER_PLACE_ORDER', draft: draft({ channel: 'WEB_FORM', threadId: undefined, instagram: undefined, customerName: 'Joy Wairimu', phone: '0712 345 678', payment: { kind: 'UNPAID' } }) },
+      NOW,
+    )
+    if (!placed.ok) throw new Error(placed.error)
+    const orderId = placed.createdOrderId!
+    // Signs up with a new email: the guest customer gets the email, and keeps the order.
+    const { state, customerId } = link(placed.state, { email: 'joy@example.com', name: '', phone: '', claimOrderId: orderId })
+    expect(state.customers).toHaveLength(1)
+    expect(state.orders[0].customerId).toBe(customerId)
+    expect(state.customers[0].email).toBe('joy@example.com')
+  })
+
+  it('moves a guest order into an existing account when a returning customer signs in after checkout', () => {
+    const { state: withAccount, customerId } = link(emptyState({ currentUserId: '' }))
+    const placed = applyAction(
+      withAccount,
+      { type: 'CUSTOMER_PLACE_ORDER', draft: draft({ channel: 'WEB_FORM', threadId: undefined, instagram: undefined, customerName: 'Joy', phone: '0799 000 111', payment: { kind: 'UNPAID' } }) },
+      NOW,
+    )
+    if (!placed.ok) throw new Error(placed.error)
+    const { state } = link(placed.state, { phone: '', claimOrderId: placed.createdOrderId! })
+    expect(state.orders.find((o) => o.id === placed.createdOrderId)!.customerId).toBe(customerId)
+  })
+
   it('does not let customers create orders as live chat or manual orders', () => {
     expect(applyAction(emptyState(), { type: 'CUSTOMER_PLACE_ORDER', draft: draft({ channel: 'MANUAL', threadId: undefined }) }, NOW).ok).toBe(false)
   })

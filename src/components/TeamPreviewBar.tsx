@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useStaffRole } from '../auth/StaffGate'
 
 /** Shown on customer pages only to team members, with a way back to the dashboard. */
-export function TeamPreviewBar({ children, back = '#/' }: { children?: ReactNode; back?: string }) {
+export function TeamPreviewBar({ children, back = '#/admin' }: { children?: ReactNode; back?: string }) {
   const role = useStaffRole()
   if (!role) return null
   return (

@@ -114,10 +114,10 @@ export function Settings() {
             </div>
           </dl>
           <p className="mt-4 text-sm text-ink-2">
-            {mode === 'google' ? (
-              <>Team members sign in with Google. Who’s on the team is set by <code>VITE_STAFF_EMAILS</code>; everyone else who signs in is a customer.</>
+            {mode === 'live' ? (
+              <>Team members sign in with Google or a confirmed email. Who’s on the team is set by <code>VITE_STAFF_EMAILS</code>; everyone else who signs in is a customer.</>
             ) : (
-              <>Demo mode: sign-in uses demo Google accounts. To switch on real Google login, follow <code>docs/google-login.md</code>.</>
+              <>Demo mode: sign-in uses pretend accounts. To switch on real Google and email sign-in, follow <code>docs/google-login.md</code>.</>
             )}
           </p>
           <div className="mt-4 border-t border-line pt-4">

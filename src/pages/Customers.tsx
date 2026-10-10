@@ -48,7 +48,7 @@ export function Customers({ customerId }: { customerId?: string }) {
           <ul className="divide-y divide-line">
             {rows.map(({ customer: c, stats }) => (
               <li key={c.id}>
-                <a href={`#/customers/${c.id}`} className="flex items-center gap-3 rounded-xl px-2 py-3 hover:bg-surface-2">
+                <a href={`#/admin/customers/${c.id}`} className="flex items-center gap-3 rounded-xl px-2 py-3 hover:bg-surface-2">
                   <Avatar name={c.name} size={38} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
