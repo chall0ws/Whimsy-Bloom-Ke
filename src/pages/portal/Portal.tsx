@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth, type Account } from '../../auth/AuthProvider'
 import { GoogleButton } from '../../auth/GoogleButton'
 import { ChatWidget, customerUnread } from '../../components/chat/ChatWidget'
-import { BloomMark, Logo } from '../../components/Logo'
+import { BloomMark, HeartDivider, Logo, Script, Sparkles } from '../../components/Logo'
 import { TeamPreviewBar } from '../../components/TeamPreviewBar'
 import { Avatar, Button, cx, Field, inputClass } from '../../components/ui'
 import { formatDate, formatKES } from '../../domain/format'
@@ -33,9 +33,13 @@ function SignIn() {
   return (
     <Page>
       <TeamPreviewBar>Customers sign in here to track and pay for their orders.</TeamPreviewBar>
-      <div className="my-auto rounded-3xl border border-line bg-surface p-8 text-center shadow-card">
+      <div className="relative my-auto rounded-b-3xl rounded-t-[180px] border border-line-strong bg-surface px-8 pb-8 pt-12 text-center shadow-card">
+        <Sparkles className="absolute left-6 top-24 w-12" />
+        <Sparkles className="absolute right-5 top-36 w-10 -scale-x-100" />
         <Logo className="justify-center" />
-        <h1 className="mt-8 font-display text-3xl font-semibold leading-tight">Your orders, all in one place</h1>
+        <Script className="mt-8 block text-4xl leading-none">Welcome to</Script>
+        <h1 className="font-display text-3xl font-semibold leading-tight text-green-ink">your flower corner</h1>
+        <HeartDivider className="mx-auto mt-3 w-40" />
         <ul className="mx-auto mt-5 max-w-xs space-y-2 text-left text-sm text-ink-2">
           {['See where your bouquet is', 'Pay with M-Pesa', 'Order again in a few taps', 'Chat with us'].map((t) => (
             <li key={t} className="flex items-center gap-2">
@@ -209,7 +213,7 @@ function OrdersTab({
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="font-display text-3xl font-semibold">Hi {customer.name.split(' ')[0]} 🌸</h1>
+        <h1 className="font-script text-5xl leading-tight text-pink-ink">Hi {customer.name.split(' ')[0]}</h1>
         <p className="text-sm text-muted">{current.length ? `You have ${current.length} order${current.length > 1 ? 's' : ''} on the way.` : 'Nothing on the way right now.'}</p>
       </div>
       {placed && (

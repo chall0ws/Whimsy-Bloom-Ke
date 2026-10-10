@@ -1,7 +1,7 @@
-import { CircleCheck, MessageCircle, Smartphone } from 'lucide-react'
+import { CircleCheck, Flower, Flower2, Gift, Leaf, MessageCircle, Smartphone } from 'lucide-react'
 import { ChatWidget, customerUnread, useMyThread } from '../components/chat/ChatWidget'
 import { useEffect, useState } from 'react'
-import { BloomMark, Logo } from '../components/Logo'
+import { BloomMark, HeartDivider, Logo, Script, Sparkles } from '../components/Logo'
 import { TeamPreviewBar } from '../components/TeamPreviewBar'
 import { Button, cx, Field, inputClass } from '../components/ui'
 import { formatKES } from '../domain/format'
@@ -9,6 +9,13 @@ import type { FulfilmentMethod } from '../domain/types'
 import { useStore } from '../state/store'
 
 type Step = 'form' | 'paying' | 'done'
+
+const FEATURES = [
+  { icon: Flower2, title: 'HANDMADE FLOWERS', detail: 'Fuzzy wire flowers & more' },
+  { icon: Gift, title: 'BESPOKE BOUQUETS', detail: 'Made for your special moments' },
+  { icon: Flower, title: 'GIANT FLOWERS', detail: 'For events, decor & photoshoots' },
+  { icon: Leaf, title: 'DETAILS THAT BLOOM', detail: 'Fillers, greenery & finishing touches' },
+]
 
 /**
  * The page linked from her social media bios. In Stage A it writes straight
@@ -84,13 +91,28 @@ export function OrderForm() {
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-card">
-        <div className="bg-pink-wash px-6 py-8 text-center">
+        <div className="relative overflow-hidden bg-gradient-to-b from-pink-wash to-surface px-6 pb-8 pt-10 text-center">
+          <Sparkles className="absolute left-5 top-6 w-14" />
+          <Sparkles className="absolute bottom-6 right-5 w-12 -scale-x-100" />
           <Logo className="justify-center" />
+          <Script className="mt-6 block text-5xl leading-none">Let’s create</Script>
+          <p className="font-display text-3xl font-semibold text-green-ink">something beautiful together</p>
+          <HeartDivider className="mx-auto mt-4 w-48" />
           <p className="mt-3 text-sm text-ink-2">Handmade flowers that never wilt. Order below and we’ll take it from here.</p>
           <a href="#/portal" className="mt-2 inline-block text-xs font-medium text-pink-ink hover:underline">
             Ordered before? Sign in with Google to track your orders
           </a>
         </div>
+
+        <ul className="grid grid-cols-2 gap-y-4 border-y border-dashed border-line-strong px-4 py-5 text-center sm:grid-cols-4">
+          {FEATURES.map(({ icon: Icon, title, detail }) => (
+            <li key={title} className="flex flex-col items-center gap-1 px-2">
+              <Icon size={26} strokeWidth={1.2} className="text-green-ink" aria-hidden />
+              <span className="text-[11px] font-semibold tracking-[0.12em] text-ink">{title}</span>
+              <span className="text-[11px] leading-snug text-muted">{detail}</span>
+            </li>
+          ))}
+        </ul>
 
         {step === 'form' && (
           <div className="space-y-6 p-6">

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { AuthProvider } from './auth/AuthProvider'
 import { StaffGate } from './auth/StaffGate'
 import { Layout } from './components/Layout'
@@ -15,12 +16,17 @@ import { Portal } from './pages/portal/Portal'
 import { Settings } from './pages/Settings'
 import { useRoute } from './router'
 import { StoreProvider } from './state/store'
+import { applyTheme, readTheme } from './theme'
 
 function Page() {
   const route = useRoute()
+  const customerPage = route.page === 'chat' || route.page === 'order-form' || route.page === 'portal'
+
+  // Customer pages always wear the brand look; the dashboard follows the team member's choice.
+  useEffect(() => applyTheme(customerPage ? 'light' : readTheme()), [customerPage])
 
   // Customer-facing pages: open to everyone, no dashboard around them.
-  if (route.page === 'chat' || route.page === 'order-form' || route.page === 'portal') {
+  if (customerPage) {
     return (
       <>
         {route.page === 'chat' && <CustomerChat />}

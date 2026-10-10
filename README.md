@@ -16,6 +16,12 @@ npm run build        # static site in dist/
 npm run build:single # one self-contained HTML file in dist-single/
 ```
 
+## Look and feel
+
+The brand look follows the Whimsy & Bloom "We are OPEN!" poster: blush-cream paper, olive green lettering, dusty-rose script (Allura) with Cormorant Garamond headings, a line-art flower logo with sparkles, heart dividers and arch-shaped frames. The colours are tokens at the top of `src/index.css`.
+
+The app is **light by default**, whatever the phone or computer is set to. Team members can switch the dashboard to dark from the sidebar; customer pages (order form, chat, client portal) always use the brand look.
+
 ## Signing in
 
 Everyone signs in with **Google**. Team members (set in `VITE_STAFF_EMAILS`) get the dashboard; everyone else gets the client portal.

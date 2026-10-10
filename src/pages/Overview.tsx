@@ -49,7 +49,8 @@ export function Overview() {
   return (
     <>
       <PageHeader
-        title={`${greeting}, ${user.name}`}
+        script={`${greeting},`}
+        title={user.name}
         subtitle={now.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         actions={
           <>
