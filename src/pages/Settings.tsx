@@ -66,9 +66,9 @@ export function Settings() {
               <Button
                 variant="primary"
                 disabled={!dirty}
-                onClick={() => {
+                onClick={async () => {
                   const patch = Object.fromEntries(changed.map((k) => [k, draft[k]])) as Partial<SettingsT>
-                  const r = dispatch({ type: 'UPDATE_SETTINGS', patch })
+                  const r = await dispatch({ type: 'UPDATE_SETTINGS', patch })
                   if (r.ok) setDraft(r.state.settings)
                 }}
               >
@@ -120,11 +120,13 @@ export function Settings() {
               <>Demo mode: sign-in uses pretend accounts. To switch on real Google and email sign-in, follow <code>docs/google-login.md</code>.</>
             )}
           </p>
-          <div className="mt-4 border-t border-line pt-4">
-            <Button variant="danger" onClick={() => setConfirmReset(true)}>
-              <RotateCcw size={14} aria-hidden /> Reset demo data
-            </Button>
-          </div>
+          {mode === 'demo' && (
+            <div className="mt-4 border-t border-line pt-4">
+              <Button variant="danger" onClick={() => setConfirmReset(true)}>
+                <RotateCcw size={14} aria-hidden /> Reset demo data
+              </Button>
+            </div>
+          )}
         </Card>
 
         <Card title="Activity log" subtitle="Every status change, payment, payout and settings change." className="xl:col-span-2">

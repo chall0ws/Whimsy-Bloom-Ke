@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { GoogleButton } from '../auth/GoogleButton'
 import { BloomMark, HeartDivider, Script } from '../components/Logo'
 import { Button, cx, Field, inputClass } from '../components/ui'
+import { LIVE } from '../config'
 import type { OrderDraft } from '../domain/actions'
 import { formatKES } from '../domain/format'
 import { orderSummary, orderTotal, productName } from '../domain/orders'
@@ -12,8 +13,10 @@ import type { FulfilmentMethod } from '../domain/types'
 import { navigate } from '../router'
 import { useStore } from '../state/store'
 import { placedHere, rememberOrder, useCart } from './cart'
-import { mpesaReference, OrderTracker, PayButton } from './OrderBits'
+import { mpesaReference, OrderTracker, PayButton, payLabel } from './OrderBits'
+import { outcomeMessage, payOrder } from './paystack'
 import { ProductArt } from './ProductArt'
+import { Loading } from './ShopLayout'
 import { useCustomer } from './ShopLayout'
 
 function Stepper({ value, onChange }: { value: number; onChange: (n: number) => void }) {
@@ -104,7 +107,7 @@ export function CartPage() {
 }
 
 export function Checkout() {
-  const { state, dispatch } = useStore()
+  const { state, dispatch, toast, refresh } = useStore()
   const { account, signOut } = useAuth()
   const { lines, clear } = useCart()
   const customer = useCustomer()
@@ -116,7 +119,9 @@ export function Checkout() {
   const [address, setAddress] = useState(customer?.address ?? '')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
+  /** Demo only: the pretend 'check your phone' screen. */
   const [paying, setPaying] = useState(false)
+  const [busy, setBusy] = useState(false)
   const placing = useRef(false)
 
   // After signing in at checkout, fill in what we already know about them.
@@ -139,47 +144,57 @@ export function Checkout() {
     return ''
   }
 
-  const place = (paid: boolean) => {
+  const place = async (payNow: boolean) => {
     if (placing.current) return
     placing.current = true
-    const wishes = [
-      ...lines.filter((l) => l.note.trim()).map((l) => `${productName(state, l.productId)}: ${l.note.trim()}`),
-      note.trim(),
-    ].filter(Boolean)
-    const base: Omit<OrderDraft, 'channel'> = {
-      customerName: name,
-      phone,
-      items: lines.map((l) => ({ productId: l.productId, qty: l.qty })),
-      customisation: wishes.join('; '),
-      method,
-      address,
-      payment: paid ? { kind: 'PAID', method: 'MPESA', reference: mpesaReference() } : { kind: 'UNPAID' },
-    }
-    let draft: OrderDraft
-    let accountCustomerId: string | undefined
-    if (account) {
-      const linked = dispatch({ type: 'CUSTOMER_LINK_ACCOUNT', email: account.email, name, phone, address })
-      if (!linked.ok) {
-        placing.current = false
-        return setPaying(false)
+    setBusy(true)
+    try {
+      const wishes = [
+        ...lines.filter((l) => l.note.trim()).map((l) => `${productName(state, l.productId)}: ${l.note.trim()}`),
+        note.trim(),
+      ].filter(Boolean)
+      // Live, the order is saved unpaid first and Paystack's confirmation marks it paid.
+      const simulatedPaid = payNow && !LIVE
+      const base: Omit<OrderDraft, 'channel'> = {
+        customerName: name,
+        phone,
+        items: lines.map((l) => ({ productId: l.productId, qty: l.qty })),
+        customisation: wishes.join('; '),
+        method,
+        address,
+        payment: simulatedPaid ? { kind: 'PAID', method: 'MPESA', reference: mpesaReference() } : { kind: 'UNPAID' },
       }
-      accountCustomerId = linked.customerId
-      draft = { ...base, channel: 'PORTAL', customerId: accountCustomerId }
-    } else {
-      draft = { ...base, channel: 'WEB_FORM', email: email.trim() || undefined }
+      let draft: OrderDraft
+      let accountCustomerId: string | undefined
+      if (account) {
+        const linked = await dispatch({ type: 'CUSTOMER_LINK_ACCOUNT', email: account.email, name, phone, address })
+        if (!linked.ok) return
+        accountCustomerId = linked.customerId
+        draft = { ...base, channel: 'PORTAL', customerId: accountCustomerId }
+      } else {
+        draft = { ...base, channel: 'WEB_FORM', email: email.trim() || undefined }
+      }
+      const result = await dispatch({ type: 'CUSTOMER_PLACE_ORDER', draft })
+      if (!result.ok || !result.createdOrderId) return
+      const orderId = result.createdOrderId
+      // Remember the phone and address on their account for next time, if it didn't have them yet.
+      const saved = accountCustomerId && result.state.customers.find((c) => c.id === accountCustomerId)
+      if (account && saved && (!saved.address || !saved.phone)) {
+        await dispatch({ type: 'CUSTOMER_UPDATE_PROFILE', customerId: saved.id, email: account.email, patch: { address: saved.address || address, phone: saved.phone || phone } })
+      }
+      rememberOrder(orderId)
+      clear()
+      navigate({ page: 'thanks', orderId })
+      if (payNow && LIVE) {
+        const message = outcomeMessage(await payOrder(orderId))
+        if (message) toast(message.text, message.tone)
+        await refresh()
+      }
+    } finally {
+      placing.current = false
+      setBusy(false)
+      setPaying(false)
     }
-    const result = dispatch({ type: 'CUSTOMER_PLACE_ORDER', draft })
-    placing.current = false
-    setPaying(false)
-    if (!result.ok || !result.createdOrderId) return
-    // Remember the phone and address on their account for next time, if it didn't have them yet.
-    const saved = accountCustomerId && result.state.customers.find((c) => c.id === accountCustomerId)
-    if (account && saved && (!saved.address || !saved.phone)) {
-      dispatch({ type: 'CUSTOMER_UPDATE_PROFILE', customerId: saved.id, email: account.email, patch: { address: saved.address || address, phone: saved.phone || phone } })
-    }
-    rememberOrder(result.createdOrderId)
-    clear()
-    navigate({ page: 'thanks', orderId: result.createdOrderId })
   }
 
   useEffect(() => {
@@ -313,17 +328,21 @@ export function Checkout() {
         <Button
           variant="primary"
           className="!h-12 w-full !text-base"
+          disabled={busy}
           onClick={() => {
             const problem = check()
             setError(problem)
-            if (!problem) setPaying(true)
+            if (problem) return
+            if (LIVE) place(true)
+            else setPaying(true)
           }}
         >
-          <Smartphone size={18} aria-hidden /> Pay {formatKES(subtotal + deliveryFee)} with M-Pesa
+          <Smartphone size={18} aria-hidden /> {busy ? 'Placing your order…' : payLabel(subtotal + deliveryFee)}
         </Button>
         <Button
           variant="ghost"
           className="w-full"
+          disabled={busy}
           onClick={() => {
             const problem = check()
             setError(problem)
@@ -344,18 +363,24 @@ function GoogleButtonFor({ returnTo }: { returnTo: string }) {
 }
 
 export function Thanks({ orderId }: { orderId: string }) {
-  const { state, dispatch } = useStore()
+  const { state, dispatch, ready } = useStore()
   const { account } = useAuth()
   const order = state.orders.find((o) => o.id === orderId)
   const owner = order && state.customers.find((c) => c.id === order.customerId)
   const mine = Boolean(order && (placedHere(order.id) || (account && owner?.email?.toLowerCase() === account.email.toLowerCase())))
   const saved = Boolean(account && owner?.email?.toLowerCase() === account.email.toLowerCase())
 
-  // A guest who creates an account here gets this order saved to it.
+  // A guest who creates an account here gets this order saved to it (one try per order and account).
+  const claimed = useRef('')
   useEffect(() => {
     if (!order || !account || saved || !placedHere(order.id)) return
+    const key = `${order.id}:${account.email}`
+    if (claimed.current === key) return
+    claimed.current = key
     dispatch({ type: 'CUSTOMER_LINK_ACCOUNT', email: account.email, name: account.name, phone: '', claimOrderId: order.id })
   }, [order, account, saved, dispatch])
+
+  if (!ready) return <Loading />
 
   if (!order || !mine) {
     return (

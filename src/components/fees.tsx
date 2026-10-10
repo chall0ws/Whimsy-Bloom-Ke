@@ -82,8 +82,8 @@ export function PayoutDialog({ open, onClose }: { open: boolean; onClose: () => 
           </Button>
           <Button
             variant="primary"
-            onClick={() => {
-              const r = dispatch({ type: 'RECORD_PAYOUT', amount: value, reference })
+            onClick={async () => {
+              const r = await dispatch({ type: 'RECORD_PAYOUT', amount: value, reference })
               if (r.ok) {
                 setAmount('')
                 setReference('')

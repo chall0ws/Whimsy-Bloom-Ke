@@ -2,7 +2,7 @@ import { MessageCircle, ShoppingBag, UserRound } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { ChatWidget, customerUnread, useMyThread } from '../components/chat/ChatWidget'
-import { HeartDivider, Logo, Script } from '../components/Logo'
+import { BloomMark, HeartDivider, Logo, Script } from '../components/Logo'
 import { TeamPreviewBar } from '../components/TeamPreviewBar'
 import { cx } from '../components/ui'
 import type { ShopRoute } from '../router'
@@ -14,6 +14,16 @@ export function useCustomer() {
   const { account } = useAuth()
   const { state } = useStore()
   return account ? state.customers.find((c) => c.email?.toLowerCase() === account.email.toLowerCase()) : undefined
+}
+
+/** Shown for a moment while the shop's data arrives (live mode). */
+export function Loading() {
+  return (
+    <div className="flex justify-center py-20" role="status">
+      <BloomMark size={44} className="animate-pulse" />
+      <span className="sr-only">Loading…</span>
+    </div>
+  )
 }
 
 export function ShopLayout({ route, children, wide = true }: { route: ShopRoute; children: ReactNode; wide?: boolean }) {

@@ -73,7 +73,7 @@ VITE_STAFF_EMAILS=you@gmail.com:SUPER_ADMIN, her@gmail.com:ADMIN
 
 Then restart: `npm run dev` and open `http://localhost:5173`. The shop opens straight away; the dashboard is at `http://localhost:5173/#/admin`.
 
-When you host the site (Netlify, Vercel, Cloudflare Pages), add the same three variables in the host's **Environment variables** settings and rebuild.
+On Vercel, the Supabase integration already provides the URL and anon key; add `VITE_STAFF_EMAILS` under **Settings → Environment Variables** and redeploy. To store orders in Supabase and take Paystack payments, continue with [go-live.md](go-live.md).
 
 ## 5. Check it works
 
@@ -81,7 +81,7 @@ When you host the site (Netlify, Vercel, Cloudflare Pages), add the same three v
 - Her at `/#/admin` → dashboard with the **Admin** badge, without Settings.
 - Any other account at `/#/admin` → "This account isn't on the team", with a button to My account.
 - A shopper creating an email account at checkout → the order goes through; they get a confirmation email; after confirming, the order is in **My account**.
-- **My account** with a new customer account → asks for a phone number once, then shows their orders. If that number has chatted or ordered before, their history carries over.
+- **My account** with a new customer account → asks for a phone number once, then shows their orders. (In demo mode, history from that phone number carries over. Live, that waits for SMS confirmation.)
 
 ## Common problems
 
@@ -95,4 +95,4 @@ When you host the site (Netlify, Vercel, Cloudflare Pages), add the same three v
 
 ## What this does and doesn't protect yet
 
-Sign-in decides **who sees which screens**. In Stage A the shop's data still lives in each browser, so login isn't yet a security boundary for the data itself. Stage B moves orders, chats and customers into the Supabase database with row-level security rules (team sees everything; a customer only their own rows). The team list moves from `VITE_STAFF_EMAILS` into a `staff` table, and customers verify their phone number by SMS before old orders are linked to their account.
+In demo mode, sign-in only decides **who sees which screens**; the data lives in each browser. In live mode ([go-live.md](go-live.md)) it's a real boundary: the server checks the sign-in on every request, the team sees everything, and a customer gets only their own orders, chat and details. Linking older orders by phone number waits until customers can confirm their number by SMS.

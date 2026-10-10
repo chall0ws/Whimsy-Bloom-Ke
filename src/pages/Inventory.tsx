@@ -182,8 +182,8 @@ function PurchaseDialog({ open, initial, onClose }: { open: boolean; initial: Ma
           </Button>
           <Button
             variant="primary"
-            onClick={() => {
-              const r = dispatch({ type: 'RECORD_PURCHASE', materialId, qty: Number(qty), note })
+            onClick={async () => {
+              const r = await dispatch({ type: 'RECORD_PURCHASE', materialId, qty: Number(qty), note })
               if (r.ok) onClose()
             }}
           >

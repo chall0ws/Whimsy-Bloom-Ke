@@ -4,6 +4,7 @@ import { formatDate, formatKES, formatTime, isSameDay } from '../../domain/forma
 import { orderSummary, orderTotal } from '../../domain/orders'
 import type { Message, Thread } from '../../domain/types'
 import { makeTypingNotifier, useLiveSignals, usePresence } from '../../state/live'
+import { payLabel, payingLabel, usePayNow } from '../../shop/OrderBits'
 import { useStore } from '../../state/store'
 import { BloomMark } from '../Logo'
 import { Button, cx, Field, inputClass } from '../ui'
@@ -113,8 +114,8 @@ function StartChat({ startedFrom, onStarted }: { startedFrom: Thread['startedFro
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [text, setText] = useState('')
-  const submit = () => {
-    const r = dispatch({ type: 'CUSTOMER_START_CHAT', name, phone, text, startedFrom })
+  const submit = async () => {
+    const r = await dispatch({ type: 'CUSTOMER_START_CHAT', name, phone, text, startedFrom })
     if (r.ok && r.threadId) onStarted(r.threadId)
   }
   return (
@@ -227,8 +228,8 @@ function Conversation({ thread, onReset, initialText = '' }: { thread: Thread; o
 
   useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [thread.messages.length])
 
-  const send = () => {
-    const r = dispatch({ type: 'CUSTOMER_SEND_MESSAGE', threadId: thread.id, text })
+  const send = async () => {
+    const r = await dispatch({ type: 'CUSTOMER_SEND_MESSAGE', threadId: thread.id, text })
     if (r.ok) setText('')
   }
 
@@ -279,20 +280,9 @@ function CustomerBubble({ message: m }: { message: Message }) {
 }
 
 function PaymentCard({ orderId }: { orderId: string }) {
-  const { state, dispatch } = useStore()
-  const [paying, setPaying] = useState(false)
+  const { state } = useStore()
+  const { pay, busy } = usePayNow()
   const order = state.orders.find((o) => o.id === orderId)
-
-  useEffect(() => {
-    if (!paying) return
-    // Stands in for the M-Pesa prompt on the customer's phone.
-    const timer = setTimeout(() => {
-      const ref = `S${Math.random().toString(36).slice(2, 11).toUpperCase()}`
-      dispatch({ type: 'CUSTOMER_PAY', orderId, reference: ref })
-      setPaying(false)
-    }, 2000)
-    return () => clearTimeout(timer)
-  }, [paying, orderId, dispatch])
 
   if (!order) return null
   const paid = order.payment.status !== 'UNPAID'
@@ -307,13 +297,13 @@ function PaymentCard({ orderId }: { orderId: string }) {
         </div>
       ) : order.status === 'CANCELLED' ? (
         <div className="mt-2 text-sm text-muted">This order was cancelled.</div>
-      ) : paying ? (
+      ) : busy ? (
         <div className="mt-2 flex items-center gap-1.5 text-sm text-ink-2">
-          <Smartphone size={16} className="animate-pulse" aria-hidden /> Check your phone and enter your M-Pesa PIN…
+          <Smartphone size={16} className="animate-pulse" aria-hidden /> {payingLabel}
         </div>
       ) : (
-        <Button variant="primary" size="sm" className="mt-2 w-full" onClick={() => setPaying(true)}>
-          <Smartphone size={14} aria-hidden /> Pay with M-Pesa
+        <Button variant="primary" size="sm" className="mt-2 w-full" onClick={() => pay(order)}>
+          <Smartphone size={14} aria-hidden /> {payLabel(orderTotal(order))}
         </Button>
       )}
     </div>

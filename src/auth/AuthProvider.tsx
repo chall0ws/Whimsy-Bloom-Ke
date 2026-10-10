@@ -1,7 +1,8 @@
-import type { SupabaseClient, User as SupabaseUser } from '@supabase/supabase-js'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Button, Field, inputClass, Modal } from '../components/ui'
-import { parseStaffList } from '../domain/auth'
+import { LIVE } from '../config'
+import { getSupabase as supabase } from '../lib/supabase'
 import { DemoGoogleChooser } from './GoogleButton'
 
 /** The account someone is signed in with. Whether they're team or a customer is decided from the email. */
@@ -29,28 +30,13 @@ interface Auth {
   signOut: () => Promise<void>
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 const RETURN_KEY = 'whimsy-bloom:after-sign-in'
 const DEMO_SESSION_KEY = 'whimsy-bloom:demo-session'
 const DEMO_ACCOUNTS_KEY = 'whimsy-bloom:demo-accounts'
 
-/** Team members by email, from VITE_STAFF_EMAILS ("you@gmail.com:SUPER_ADMIN, her@gmail.com:ADMIN"). */
-export const CONFIGURED_STAFF = parseStaffList(import.meta.env.VITE_STAFF_EMAILS as string | undefined)
-export const LIVE_LOGIN_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_KEY)
+export { CONFIGURED_STAFF } from '../config'
 
 const AuthContext = createContext<Auth | null>(null)
-
-let client: Promise<SupabaseClient> | null = null
-function supabase(): Promise<SupabaseClient> {
-  client ??= import('@supabase/supabase-js').then(({ createClient }) =>
-    createClient(SUPABASE_URL!, SUPABASE_KEY!, {
-      // PKCE returns "?code=…" rather than tokens in the "#", which the hash-based page links need.
-      auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true },
-    }),
-  )
-  return client
-}
 
 function fromSupabase(user: SupabaseUser | null | undefined): Account | null {
   if (!user?.email) return null
@@ -120,7 +106,7 @@ function goToSavedPage() {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const mode = LIVE_LOGIN_CONFIGURED ? 'live' : 'demo'
+  const mode = LIVE ? 'live' : 'demo'
   const [account, setAccount] = useState<Account | null>(() => (mode === 'demo' ? readJson<Account | null>(DEMO_SESSION_KEY, null) : null))
   const [loading, setLoading] = useState(mode === 'live')
   const [chooserFor, setChooserFor] = useState<string | null>(null)

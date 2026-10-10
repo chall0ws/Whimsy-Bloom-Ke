@@ -171,8 +171,8 @@ function Conversation({ thread, online, typing }: { thread: Thread; online: bool
 
   useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [thread.messages.length, typing])
 
-  const send = () => {
-    const r = dispatch({ type: 'SEND_MESSAGE', threadId: thread.id, text })
+  const send = async () => {
+    const r = await dispatch({ type: 'SEND_MESSAGE', threadId: thread.id, text })
     if (r.ok) setText('')
   }
 

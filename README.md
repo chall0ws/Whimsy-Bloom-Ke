@@ -7,15 +7,18 @@ Two sides of one app:
 - **The shop** (the main address, `/#/`): customers browse, fill a cart and check out **without signing in**. At checkout they can create a free account in one tap (Google or email), or carry on as a guest.
 - **The dashboard** (`/#/admin`): the team runs the business there, with orders, live chat, customers, materials stock and the partner's KES 100-per-order service fee.
 
-This is **Stage A**: a working, clickable prototype with realistic sample data. Everything runs in the browser and is saved in that browser (`localStorage`). There is no server yet.
+It runs in one of two modes:
+
+- **Demo** (the default): realistic sample data saved in each browser, pretend sign-in and pretend M-Pesa payments. Nothing to set up.
+- **Live** (`VITE_LIVE=true`): data in **Supabase**, real Google and email sign-in, and **Paystack** payments (M-Pesa or card). The page talks only to the site's own server functions under `/api`, which apply the business rules and decide who may see and change what. Setup: [docs/go-live.md](docs/go-live.md).
 
 ## Run it
 
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm test             # order, fee, payout and stock rules
-npm run build        # static site in dist/
+npm test             # order, fee, payout and stock rules, plus server permissions and payments
+npm run build        # static site + /api functions in .vercel/output (Vercel Build Output API)
 npm run build:single # one self-contained HTML file in dist-single/
 ```
 
@@ -32,7 +35,7 @@ Nobody has to sign in to shop. Accounts are optional, offered at checkout and ag
 - **Ways to sign in:** **Continue with Google**, or an **email and password**. Forgotten passwords are reset by email.
 - **Team:** emails listed in `VITE_STAFF_EMAILS` open the dashboard at `/#/admin`. The address must be **verified**: signed in with Google, or an email account whose confirmation link was clicked. A password account that merely *uses* a team email can't get in.
 - **Demo mode** (default, nothing configured): "Continue with Google" opens a pretend account picker (*Partner* = super admin, *Owner* = admin, *Faith Njeri* = customer with past orders). Email accounts are pretend too and stay in that browser.
-- **Real sign-in:** follow [docs/google-login.md](docs/google-login.md) (about 15 minutes, using Supabase Auth), then put the keys in `.env.local` (see `.env.example`).
+- **Real sign-in:** follow [docs/google-login.md](docs/google-login.md) (Supabase Auth), then [docs/go-live.md](docs/go-live.md) to switch on live data and payments.
 
 ## What's in it
 
@@ -66,7 +69,7 @@ Shop orders show in the dashboard as **Website (guest)** or **Website (account)*
 
 ### Trying live chat
 
-Open the dashboard's **Live chat** page (`/#/admin/inbox`) in one tab and the shop's **Chat with us** page (`/#/chat`) in another tab of the same browser. Messages, typing, "Seen" receipts and payments show up in the other tab straight away. In Stage A, tabs share data through browser storage. Stage B moves this to a realtime backend, so customers can chat from their own phones.
+In demo mode, open the dashboard's **Live chat** page (`/#/admin/inbox`) in one tab and the shop's **Chat with us** page (`/#/chat`) in another tab of the same browser. Messages, typing, "Seen" receipts and payments show up in the other tab straight away, through browser storage. In live mode the same happens across devices, over Supabase Realtime.
 
 ## Business rules
 
@@ -79,10 +82,11 @@ Open the dashboard's **Live chat** page (`/#/admin/inbox`) in one tab and the sh
 - **Live chat:** one conversation per customer, matched by phone number. While she's *Away*, a customer gets at most one automatic reply per hour. Orders created from a chat are tagged *Live chat*, and their payment link and shipping confirmation are posted in that chat.
 - **Payouts:** the admin records a payout with its M-Pesa code. The payable balance goes down once the **super admin** confirms receipt.
 - **Roles:** the *super admin* (platform partner) can do everything. The *admin* (shop owner) runs orders, messages, customers and stock, and records payouts. She can't change fees or settings, or confirm payouts. A Google account that isn't on the team can't open the dashboard.
-- **Customers** can only see, pay for and change their own orders and details. A guest order can be saved to an account only from the browser it was placed in.
+- **Customers** can only see, pay for and change their own orders and details. A guest order can be saved to an account only from the browser it was placed in (live, that browser holds a secret token for it). Customers never see team notes, tags or the service fee.
+- **Payments (live):** the server starts each Paystack payment for the order's real total and marks it paid only after checking with Paystack (from the payment window, or Paystack's signed webhook if the window was closed). The amount must match, and the same payment is never counted twice.
 - **Old links** keep working: `/#/portal` opens My account and `/#/order-form` opens the shop.
 
-The rules live in `src/domain/` as pure functions, covered by `src/domain/actions.test.ts`.
+The rules live in `src/domain/` as pure functions, covered by `src/domain/actions.test.ts`. The live server runs the very same functions.
 
 ## Code layout
 
@@ -90,18 +94,22 @@ The rules live in `src/domain/` as pure functions, covered by `src/domain/action
 src/domain/     types, catalog, order/fee/stock rules (actions.ts), metrics, seed data
 src/auth/       Google and email sign-in (Supabase or demo), team gate, sign-in panel
 src/shop/       the shop: layout, home, catalogue, cart, checkout, thank-you, My account
-src/state/      React store with browser persistence and live tab-to-tab sync
+src/state/      React store: browser storage (demo) or the /api server with realtime refresh (live)
 src/components/ layout, logo, charts, order widgets, fee tracker, customer chat widget, UI primitives
 src/pages/      one file per dashboard screen, plus the full-page customer chat
+server/         /api functions: permissions, per-person views, Supabase storage, Paystack (core.test.ts)
+supabase/       SQL to run once in the Supabase SQL Editor
+scripts/        packs the site and functions for Vercel
 ```
 
-## What's simulated in Stage A
+## Demo vs live
 
-| Simulated | Stage B |
-|---|---|
-| Sample orders, customers and chats, generated relative to the first visit | Orders, chats and customers in the Supabase database, protected by row-level security; team list in a `staff` table |
-| Linking an account to past orders by phone number | SMS code to confirm the number before linking |
-| Cart and guest-order memory in the browser | Guest orders tied to a signed link sent by SMS/email |
-| Payment links and M-Pesa prompts | Payment provider (IntaSend, Paystack or Pesapal) confirming payments automatically |
-| Shipping confirmations | SMS (Africa's Talking) or email |
-| Live chat between tabs of one browser | Realtime backend (e.g. Supabase Realtime) so customers chat from their own devices, plus a phone notification for her when a new chat arrives |
+| | Demo | Live |
+|---|---|---|
+| Data | Sample orders, customers and chats in each browser | Supabase database, reachable only through the `/api` server |
+| Sign-in | Pretend Google accounts and browser-only email accounts | Supabase Auth (Google, email and password) |
+| Payments | Pretend M-Pesa prompt | Paystack window (M-Pesa or card), confirmed by the server and webhook |
+| Live chat | Between tabs of one browser | Across devices (Supabase Realtime, with a 30-second refresh as backup) |
+| Linking past orders by phone | Yes | Not yet: needs an SMS code first |
+
+Still to come: SMS/email confirmations (Africa's Talking or an email service), an SMS code before linking history by phone number, a phone notification for her when a new chat arrives, and Paystack live keys.

@@ -429,6 +429,42 @@ describe('client portal', () => {
   })
 })
 
+describe('live-mode safeguards', () => {
+  it('records a Paystack payment once, and only for the right amount', () => {
+    const created = createPaidOrder(emptyState(), { payment: { kind: 'UNPAID' } })
+    const wrong = applyAction(created.state, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'MPESA', reference: 'ps_1', amount: 100 }, NOW)
+    expect(wrong.ok).toBe(false)
+    const paid = apply(created.state, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'MPESA', reference: 'ps_1', amount: 3800 })
+    expect(paid.orders[0]).toMatchObject({ status: 'PENDING', payment: { status: 'PAID', reference: 'PS_1' } })
+    expect(paid.orders[0].history.at(-1)!.by).toBe('paystack')
+    // The same notification again changes nothing.
+    const again = applyAction(paid, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'MPESA', reference: 'ps_1', amount: 3800 }, NOW)
+    expect(again.ok && again.state.orders).toEqual(paid.orders)
+  })
+
+  it('can keep a new chat separate from a customer’s existing conversation', () => {
+    const first = applyAction(emptyState(), { type: 'CUSTOMER_START_CHAT', name: 'Joy', phone: '0712345678', startedFrom: 'CHAT_LINK' }, NOW)
+    if (!first.ok) throw new Error(first.error)
+    const second = applyAction(first.state, { type: 'CUSTOMER_START_CHAT', name: 'Joy', phone: '0712345678', startedFrom: 'CHAT_LINK', newThread: true }, NOW)
+    if (!second.ok) throw new Error(second.error)
+    expect(second.threadId).not.toBe(first.threadId)
+    expect(second.state.customers).toHaveLength(1)
+  })
+
+  it('does not bring over orders by phone number when phone matching is off', () => {
+    const guest = applyAction(
+      emptyState(),
+      { type: 'CUSTOMER_PLACE_ORDER', draft: draft({ channel: 'WEB_FORM', threadId: undefined, instagram: undefined, customerName: 'Joy', phone: '0712 345 678', payment: { kind: 'UNPAID' } }) },
+      NOW,
+    )
+    if (!guest.ok) throw new Error(guest.error)
+    const linked = applyAction(guest.state, { type: 'CUSTOMER_LINK_ACCOUNT', email: 'joy@example.com', name: 'Joy', phone: '0712 345 678', allowPhoneMatch: false }, NOW)
+    if (!linked.ok) throw new Error(linked.error)
+    expect(linked.state.customers).toHaveLength(2)
+    expect(linked.state.orders[0].customerId).not.toBe(linked.customerId)
+  })
+})
+
 describe('seed data', () => {
   const state = createSeedState(NOW)
 

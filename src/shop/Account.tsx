@@ -12,13 +12,14 @@ import { navigate, type AccountTab } from '../router'
 import { useStore } from '../state/store'
 import { useCart } from './cart'
 import { OrderTracker, PayButton } from './OrderBits'
-import { useCustomer } from './ShopLayout'
+import { Loading, useCustomer } from './ShopLayout'
 
 /** My account: orders with tracking, chat and details. Signing in is optional for shopping. */
 export function AccountPage({ tab = 'orders' }: { tab?: AccountTab }) {
   const { account, loading } = useAuth()
+  const { ready } = useStore()
   const customer = useCustomer()
-  if (loading) return null
+  if (loading || (account && !ready)) return <Loading />
   if (!account) return <SignIn />
   if (!customer) return <Welcome account={account} />
   return <SignedIn customer={customer} account={account} tab={tab} />
@@ -275,9 +276,9 @@ function ProfileTab({ customer, account }: { customer: Customer; account: AuthAc
       <h1 className="font-display text-3xl font-semibold text-green-ink">Your details</h1>
       <form
         className="space-y-4 rounded-3xl border border-line bg-surface p-5 shadow-card"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault()
-          const r = dispatch({ type: 'CUSTOMER_UPDATE_PROFILE', customerId: customer.id, email: account.email, patch: { name, phone, address } })
+          const r = await dispatch({ type: 'CUSTOMER_UPDATE_PROFILE', customerId: customer.id, email: account.email, patch: { name, phone, address } })
           setSaved(r.ok)
         }}
       >
