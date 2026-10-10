@@ -58,7 +58,7 @@ export type Action =
   | { type: 'CUSTOMER_READ'; threadId: string }
   | { type: 'CUSTOMER_PAY'; orderId: string; reference: string; customerId?: string }
   | { type: 'CUSTOMER_PLACE_ORDER'; draft: OrderDraft }
-  | { type: 'CUSTOMER_LINK_ACCOUNT'; email: string; name: string; phone: string; address?: string }
+  | { type: 'CUSTOMER_LINK_ACCOUNT'; email: string; name: string; phone: string; address?: string; claimOrderId?: string }
   | { type: 'CUSTOMER_UPDATE_PROFILE'; customerId: string; email: string; patch: Partial<Pick<Customer, 'name' | 'phone' | 'address'>> }
 
 export type ActionResult =
@@ -312,38 +312,44 @@ function run(tx: Tx, action: Action): string | undefined {
 }
 
 /**
- * Connects a Google account to a customer record: by email if we know it, otherwise by phone
- * number (so past chats and orders carry over), otherwise as a new customer.
+ * Connects a signed-in account (Google or email) to a customer record: by email if we know it,
+ * otherwise by phone number (so past chats and orders carry over), otherwise as a new customer.
+ * `claimOrderId` is a guest order just placed in this browser; it moves to the new account.
  */
 function linkAccount(tx: Tx, a: Extract<Action, { type: 'CUSTOMER_LINK_ACCOUNT' }>) {
   const email = a.email.trim().toLowerCase()
   if (!email.includes('@')) return 'Sign in again to continue.'
-  const byEmail = tx.state.customers.find((c) => c.email?.toLowerCase() === email)
-  if (byEmail) {
-    tx.customerId = byEmail.id
-    return
+  const claimed = a.claimOrderId ? tx.order(a.claimOrderId) : undefined
+  if (a.claimOrderId && !claimed) return 'Order not found.'
+  const claimedCustomer = claimed && tx.state.customers.find((c) => c.id === claimed.customerId)
+  const phone = a.phone.trim() || claimedCustomer?.phone || ''
+  const name = a.name.trim() || claimedCustomer?.name || ''
+
+  const setCustomer = (c: Customer) => {
+    tx.state = { ...tx.state, customers: tx.state.customers.map((x) => (x.id === c.id ? c : x)) }
   }
-  if (!a.name.trim()) return 'Please add your name.'
-  if (digits(a.phone).length < 9) return 'Please add a phone number we can reach you on.'
-  const byPhone = tx.state.customers.find((c) => c.phone && digits(c.phone) === digits(a.phone) && !c.email)
-  if (byPhone) {
-    const linked = { ...byPhone, email, address: byPhone.address ?? (a.address?.trim() || undefined) }
-    tx.state = { ...tx.state, customers: tx.state.customers.map((c) => (c.id === byPhone.id ? linked : c)) }
-    tx.customerId = byPhone.id
-    return
+  let target = tx.state.customers.find((c) => c.email?.toLowerCase() === email)
+  if (!target && claimedCustomer && !claimedCustomer.email) {
+    target = { ...claimedCustomer, email, address: claimedCustomer.address ?? (a.address?.trim() || undefined) }
+    setCustomer(target)
   }
-  const customer: Customer = {
-    id: tx.id('c'),
-    name: a.name.trim(),
-    phone: a.phone.trim(),
-    email,
-    address: a.address?.trim() || undefined,
-    notes: '',
-    tags: [],
-    createdAt: tx.at,
+  if (!target) {
+    if (!name) return 'Please add your name.'
+    if (digits(phone).length < 9) return 'Please add a phone number we can reach you on.'
+    const byPhone = tx.state.customers.find((c) => c.phone && digits(c.phone) === digits(phone) && !c.email)
+    if (byPhone) {
+      target = { ...byPhone, email, address: byPhone.address ?? (a.address?.trim() || undefined) }
+      setCustomer(target)
+    } else {
+      target = { id: tx.id('c'), name, phone, email, address: a.address?.trim() || undefined, notes: '', tags: [], createdAt: tx.at }
+      tx.state = { ...tx.state, customers: [...tx.state.customers, target] }
+    }
   }
-  tx.state = { ...tx.state, customers: [...tx.state.customers, customer] }
-  tx.customerId = customer.id
+  if (claimed && claimed.customerId !== target.id) {
+    tx.putOrder({ ...claimed, customerId: target.id })
+    tx.audit(`${claimed.number}: guest order saved to ${target.name}’s account`, CUSTOMER_ACTOR)
+  }
+  tx.customerId = target.id
 }
 
 const digits = (s?: string) => (s ?? '').replace(/\D/g, '').slice(-9)

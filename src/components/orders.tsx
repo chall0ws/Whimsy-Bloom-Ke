@@ -343,7 +343,7 @@ export function OrderDrawer() {
             <dt className="eyebrow mb-0.5">Customer</dt>
             <dd>
               {customer ? (
-                <a href={`#/customers/${customer.id}`} onClick={close} className="inline-flex items-center gap-1 font-medium hover:underline">
+                <a href={`#/admin/customers/${customer.id}`} onClick={close} className="inline-flex items-center gap-1 font-medium hover:underline">
                   <UserRound size={14} aria-hidden /> {customer.name}
                 </a>
               ) : (

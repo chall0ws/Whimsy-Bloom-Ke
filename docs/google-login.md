@@ -1,11 +1,13 @@
-# Switching on Google login
+# Switching on Google and email sign-in
 
-The app signs people in with Google through **Supabase Auth** (free tier is enough). Until you finish these steps it runs in **demo mode**: the "Continue with Google" button opens a pretend account picker.
+The app signs people in through **Supabase Auth** (the free tier is enough), with **Google** or an **email and password**. Until you finish these steps it runs in **demo mode** with pretend accounts.
+
+Shopping never needs an account. Signing in is offered at checkout, on the thank-you page and under **My account**.
 
 Who sees what after signing in:
 
-- **Team** (the emails in `VITE_STAFF_EMAILS`) → the dashboard. `SUPER_ADMIN` sees everything; `ADMIN` can't change fees or settings, or confirm payouts.
-- **Everyone else** → the client portal (`#/portal`), with their own orders, payments, chat and details.
+- **Team** (the emails in `VITE_STAFF_EMAILS`, once verified) → the dashboard at `/#/admin`. `SUPER_ADMIN` sees everything; `ADMIN` can't change fees or settings, or confirm payouts.
+- **Everyone else** → **My account** (`/#/account`), with their own orders, payments, chat and details.
 
 It takes about 15 minutes. You need a Google account and a Supabase account.
 
@@ -47,6 +49,15 @@ In the Supabase dashboard:
    - **Site URL:** your live site, e.g. `https://whimsybloom.co.ke`.
    - **Redirect URLs:** add `http://localhost:5173` and your live site URL. Google sends people back to these after sign-in.
 
+### Email and password
+
+Email sign-in is switched on in Supabase by default (**Authentication → Sign In / Providers → Email**).
+
+- **Leave "Confirm email" on.** New email accounts get a link to click before they can sign in. That stops people creating accounts with someone else's address, and the dashboard only opens for a *confirmed* team email. Checkout isn't held up: the order goes through straight away and shows in My account once they confirm.
+- The confirmation and password-reset links send people back to your **Site URL** and **Redirect URLs** (step 3.3), so make sure those are set.
+- **Before launch, connect your own email sender** (**Project Settings → Authentication → SMTP**, e.g. Resend, Brevo or Zoho). Supabase's built-in sender is only meant for testing and allows just a few emails an hour.
+- Optional: under **Authentication → Email Templates**, reword the confirmation email in the Whimsy & Bloom voice.
+
 ## 4. Point the app at Supabase
 
 Copy `.env.example` to `.env.local` in the project folder and fill it in:
@@ -58,18 +69,19 @@ VITE_STAFF_EMAILS=you@gmail.com:SUPER_ADMIN, her@gmail.com:ADMIN
 ```
 
 - `.env.local` is in `.gitignore`, so it isn't committed. The anon key is safe to ship in a web app; never put the **service_role** key here.
-- Use the exact Google addresses you two sign in with. An entry with no role is an `ADMIN`.
+- Use the exact addresses you two sign in with. An entry with no role is an `ADMIN`.
 
-Then restart: `npm run dev`, open `http://localhost:5173`, and click **Continue with Google**.
+Then restart: `npm run dev` and open `http://localhost:5173`. The shop opens straight away; the dashboard is at `http://localhost:5173/#/admin`.
 
 When you host the site (Netlify, Vercel, Cloudflare Pages), add the same three variables in the host's **Environment variables** settings and rebuild.
 
 ## 5. Check it works
 
-- You → dashboard with the **Super admin** badge and the Settings page.
-- Her → dashboard with the **Admin** badge, without Settings.
-- Any other Google account → "This account isn't on the team", with a button to the client portal.
-- `#/portal` with a customer account → asks for a phone number once, then shows their orders. If that number has chatted or ordered before, their history carries over.
+- You at `/#/admin` → dashboard with the **Super admin** badge and the Settings page.
+- Her at `/#/admin` → dashboard with the **Admin** badge, without Settings.
+- Any other account at `/#/admin` → "This account isn't on the team", with a button to My account.
+- A shopper creating an email account at checkout → the order goes through; they get a confirmation email; after confirming, the order is in **My account**.
+- **My account** with a new customer account → asks for a phone number once, then shows their orders. If that number has chatted or ordered before, their history carries over.
 
 ## Common problems
 
@@ -78,7 +90,8 @@ When you host the site (Netlify, Vercel, Cloudflare Pages), add the same three v
 | `Error 400: redirect_uri_mismatch` | The **Authorized redirect URI** in Google must be exactly `https://<ref>.supabase.co/auth/v1/callback`. |
 | Back from Google but still signed out | Add the page's address (e.g. `http://localhost:5173`) to Supabase **Redirect URLs**. `localhost` and `127.0.0.1` count as different sites. |
 | "Access blocked: app is in testing" | Publish the app (step 2.6), or add the account as a test user. |
-| Signed in but sent to the portal | That email isn't in `VITE_STAFF_EMAILS`, or the site wasn't rebuilt after changing it. |
+| Team member gets "This account isn't on the team" | That email isn't in `VITE_STAFF_EMAILS`, the site wasn't rebuilt after changing it, or it's an email account that hasn't been confirmed yet. |
+| No confirmation or reset email arrives | Check spam, then set up your own SMTP sender (see *Email and password*); the built-in sender is heavily rate-limited. |
 
 ## What this does and doesn't protect yet
 

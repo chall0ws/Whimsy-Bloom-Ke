@@ -16,8 +16,8 @@ type Filter = 'ALL' | 'UNREAD' | 'ONLINE'
 
 const STARTED_FROM: Record<Thread['startedFrom'], string> = {
   CHAT_LINK: 'Started from the chat link',
-  ORDER_FORM: 'Started from the order form',
-  PORTAL: 'Started from the client portal',
+  ORDER_FORM: 'Started from the shop',
+  PORTAL: 'Started from My account',
 }
 
 export function Inbox({ threadId }: { threadId?: string }) {
@@ -44,7 +44,7 @@ export function Inbox({ threadId }: { threadId?: string }) {
       <div className={cx(selected && 'hidden lg:block')}>
         <PageHeader
           title="Live chat"
-          subtitle={`Customers chat from the link in your bio and the order form · ${unread.messages} unread`}
+          subtitle={`Customers chat from the shop and the link in your bio · ${unread.messages} unread`}
           actions={
             <>
               <AvailabilitySwitch />
@@ -127,7 +127,7 @@ function ThreadRow({ thread, active, online, typing }: { thread: Thread; active:
   const n = unreadCount(thread)
   return (
     <li>
-      <a href={`#/inbox/${thread.id}`} aria-current={active ? 'true' : undefined} className={cx('flex items-center gap-3 rounded-xl px-3 py-2.5', active ? 'bg-green-wash' : 'hover:bg-surface-2')}>
+      <a href={`#/admin/inbox/${thread.id}`} aria-current={active ? 'true' : undefined} className={cx('flex items-center gap-3 rounded-xl px-3 py-2.5', active ? 'bg-green-wash' : 'hover:bg-surface-2')}>
         <span className="relative">
           <Avatar name={customer?.name ?? 'Customer'} size={40} />
           {online && <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-surface bg-[#3fa66b]" aria-label="Online now" />}
@@ -320,7 +320,7 @@ function CustomerPanel({ thread }: { thread: Thread }) {
     <aside className="scroll-thin hidden min-h-0 flex-col gap-4 overflow-y-auto rounded-2xl border border-line bg-surface p-4 shadow-card xl:flex">
       <div>
         <div className="eyebrow mb-1">Customer</div>
-        <a href={`#/customers/${customer.id}`} className="font-semibold hover:underline">
+        <a href={`#/admin/customers/${customer.id}`} className="font-semibold hover:underline">
           {customer.name}
         </a>
         {customer.phone && <div className="text-sm text-muted">{customer.phone}</div>}

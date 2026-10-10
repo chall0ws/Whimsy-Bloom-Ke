@@ -63,8 +63,8 @@ export function orderSummary(state: AppState, order: Order): string {
 
 export const CHANNEL_LABEL: Record<Channel, string> = {
   LIVE_CHAT: 'Live chat',
-  WEB_FORM: 'Web Form',
-  PORTAL: 'Client portal',
+  WEB_FORM: 'Website (guest)',
+  PORTAL: 'Website (account)',
   MANUAL: 'Phone / in person',
 }
 

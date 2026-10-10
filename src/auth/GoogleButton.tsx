@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Button, Field, inputClass, Modal } from '../components/ui'
-import type { Account } from './AuthProvider'
 
 export function GoogleLogo({ size = 18 }: { size?: number }) {
   return (
@@ -26,14 +25,16 @@ export function GoogleButton({ onClick, label = 'Continue with Google' }: { onCl
   )
 }
 
-const DEMO_ACCOUNTS: (Account & { note: string })[] = [
+type DemoGoogleAccount = { name: string; email: string }
+
+const DEMO_ACCOUNTS: (DemoGoogleAccount & { note: string })[] = [
   { name: 'Partner', email: 'partner@example.com', note: 'Team · super admin' },
   { name: 'Owner', email: 'owner@example.com', note: 'Team · admin' },
   { name: 'Faith Njeri', email: 'faith.njeri@example.com', note: 'Customer with past orders' },
 ]
 
 /** Stands in for Google's own account picker until Google login is switched on. */
-export function DemoGoogleChooser({ onChoose, onCancel }: { onChoose: (account: Account) => void; onCancel: () => void }) {
+export function DemoGoogleChooser({ onChoose, onCancel }: { onChoose: (account: DemoGoogleAccount) => void; onCancel: () => void }) {
   const [other, setOther] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')

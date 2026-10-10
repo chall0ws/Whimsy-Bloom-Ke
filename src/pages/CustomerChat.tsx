@@ -1,15 +1,13 @@
 import { ChatWidget } from '../components/chat/ChatWidget'
-import { TeamPreviewBar } from '../components/TeamPreviewBar'
+import { useCustomer } from '../shop/ShopLayout'
 
-/** The page customers open from the "Chat with us" link in her bios. */
+/** The page customers open from the "Chat with us" link in her bios and the shop menu. */
 export function CustomerChat() {
+  const customer = useCustomer()
+  const identity = customer?.phone ? { customerId: customer.id, name: customer.name, phone: customer.phone } : undefined
   return (
-    <div className="mx-auto flex h-[100dvh] max-w-md flex-col gap-3 px-4 py-4">
-      <TeamPreviewBar back="#/inbox">Open the dashboard in another tab to answer.</TeamPreviewBar>
-      <ChatWidget startedFrom="CHAT_LINK" className="min-h-0 flex-1" />
-      <a href="#/portal" className="text-center text-xs font-medium text-ink-2 hover:text-ink">
-        Have an account? Sign in to see your orders
-      </a>
+    <div className="mx-auto flex h-[calc(100dvh-220px)] min-h-[480px] max-w-md flex-col">
+      <ChatWidget startedFrom={identity ? 'PORTAL' : 'CHAT_LINK'} identity={identity} className="min-h-0 flex-1 !shadow-card" />
     </div>
   )
 }
