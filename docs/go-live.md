@@ -69,7 +69,7 @@ To go back to demo mode, delete `VITE_LIVE` (or set it to `false`) and redeploy.
 ## 5. Try it
 
 1. Open the site in a private window. Add a bouquet, check out as a guest, choose **Pay … · M-Pesa or card**.
-2. Paystack's window opens. In test mode no real money moves. Pay with Paystack's test card **4084 0840 8408 4081**, expiry any future date, CVV **408**, PIN **0000**, OTP **123456**. (Paystack's [test payments page](https://paystack.com/docs/payments/test-payments/) lists test M-Pesa options too.)
+2. Paystack's window opens. In test mode no real money moves. Choose **Card** and use Paystack's test card **4084 0840 8408 4081**, expiry any future date (e.g. 12/30), CVV **408**. If it asks for an OTP, enter **123456**. (Paystack's [test payments page](https://paystack.com/docs/payments/test-payments/) lists more test cards.)
 3. You land on the thank-you page with *Payment received*. The order shows **Paid** and moves to *Pending*.
 4. Sign in at `/#/admin` with your Google account. The order is there, paid by **Paystack**, on every device.
 5. From another phone, open **Chat with us** and send a message. It appears in the dashboard's **Live chat** within a second or two.
