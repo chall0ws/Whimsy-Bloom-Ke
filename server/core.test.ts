@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { Action, OrderDraft } from '../src/domain/actions'
 import { createSeedState } from '../src/domain/seed'
 import { forSale, PRODUCTS } from '../src/domain/catalog'
-import { confirmPaystack, handleWebhook, readState, runAction, startPayment, type Caller, type Ctx, type PaystackApi, type PaystackTransaction } from './core'
+import { confirmPaystack, handleWebhook, readState, runAction, saveOrderPhoto, startPayment, type Caller, type Ctx, type PaystackApi, type PaystackTransaction, type PhotoStore } from './core'
 import { diff, fromRecords, toMeta, toRecords } from './records'
 import { MemoryRepo } from './repo'
 
@@ -242,6 +242,40 @@ describe('Paystack', () => {
     const signature = createHmac('sha512', 'sk_test_secret').update(body).digest('hex')
     expect((await handleWebhook(repo, paystack, body, signature, 'sk_test_secret')).status).toBe(200)
     expect((await repo.load()).state.orders[0].payment.status).toBe('DEPOSIT_PAID')
+  })
+})
+
+describe('order photos', () => {
+  class FakeStore implements PhotoStore {
+    saved: { path: string; size: number; type: string }[] = []
+    async upload(path: string, bytes: Uint8Array, contentType: string) {
+      this.saved.push({ path, size: bytes.length, type: contentType })
+      return `https://photos.example/${path}`
+    }
+  }
+  const JPEG = `data:image/jpeg;base64,${Buffer.from('fake jpeg bytes').toString('base64')}`
+
+  it('stores a photo for the team only, under the order, with a random name', async () => {
+    const repo = MemoryRepo.from(createSeedState(NOW))
+    const order = (await repo.load()).state.orders[0]
+    const store = new FakeStore()
+    expect(await saveOrderPhoto(ctx(repo, null), store, order.id, JPEG)).toMatchObject({ ok: false, status: 403 })
+    expect(await saveOrderPhoto(ctx(repo, joy), store, order.id, JPEG)).toMatchObject({ ok: false, status: 403 })
+    expect(await saveOrderPhoto(ctx(repo, owner), store, 'o-missing', JPEG)).toMatchObject({ ok: false, status: 404 })
+    expect(await saveOrderPhoto(ctx(repo, owner), store, order.id, 'data:image/gif;base64,R0lG')).toMatchObject({ ok: false, status: 400 })
+    expect(store.saved).toHaveLength(0)
+    const saved = await saveOrderPhoto(ctx(repo, owner), store, order.id, JPEG)
+    expect(saved.ok).toBe(true)
+    expect(store.saved[0]).toMatchObject({ size: 15, type: 'image/jpeg' })
+    expect(store.saved[0].path).toMatch(new RegExp(`^${order.id}/[0-9a-f]{16}\\.jpg$`))
+    expect(saved.ok && saved.url).toBe(`https://photos.example/${store.saved[0].path}`)
+  })
+
+  it('refuses photos that are too large', async () => {
+    const repo = MemoryRepo.from(createSeedState(NOW))
+    const order = (await repo.load()).state.orders[0]
+    const big = `data:image/png;base64,${Buffer.alloc(3_000_001).toString('base64')}`
+    expect(await saveOrderPhoto(ctx(repo, owner), new FakeStore(), order.id, big)).toMatchObject({ ok: false, status: 413 })
   })
 })
 

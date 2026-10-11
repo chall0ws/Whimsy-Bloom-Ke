@@ -11,7 +11,7 @@ import type { Customer, Order } from '../domain/types'
 import { navigate, type AccountTab } from '../router'
 import { useStore } from '../state/store'
 import { useCart } from './cart'
-import { OrderTracker, PayButton, PaymentSummary } from './OrderBits'
+import { OrderTracker, PayButton, PaymentSummary, ReadyPhoto } from './OrderBits'
 import { Loading, useCustomer } from './ShopLayout'
 
 /** My account: orders with tracking, chat and details. Signing in is optional for shopping. */
@@ -227,6 +227,9 @@ function OrderCard({ order, onAsk, compact }: { order: Order; onAsk: (o: Order) 
         <>
           <div className="mt-4">
             <OrderTracker order={order} />
+          </div>
+          <div className="mt-3">
+            <ReadyPhoto order={order} />
           </div>
           <div className="mt-3">
             <PaymentSummary order={order} />

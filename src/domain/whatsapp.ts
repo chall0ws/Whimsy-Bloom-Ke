@@ -26,8 +26,11 @@ export function readyMessage(o: {
   deliveryFee: number
   balance: number
   payUrl: string
+  /** Link to a photo of the finished bouquet. */
+  photoUrl?: string
 }): string {
   const lines = [`Hi ${o.firstName}! 🌸 Your Whimsy & Bloom order ${o.number} (${o.summary}) is ready.`, '']
+  if (o.photoUrl) lines.push(`Here it is: ${o.photoUrl}`, '')
   if (o.balance > 0) {
     lines.push(
       `Balance to pay: ${formatKES(o.balance)}`,

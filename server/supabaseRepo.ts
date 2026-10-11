@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { DEFAULT_SETTINGS } from '../src/domain/catalog'
 import type { AppState } from '../src/domain/types'
-import type { Caller } from './core'
+import type { Caller, PhotoStore } from './core'
 import { diff, fromRecords, type Meta, type RecordRow } from './records'
 import { hasChanges, type Repo } from './repo'
 
@@ -74,5 +74,16 @@ export async function callerFromToken(db: SupabaseClient, token: string | null):
     email: user.email,
     name: meta.full_name ?? meta.name ?? user.email.split('@')[0],
     verified: google || Boolean(user.email_confirmed_at),
+  }
+}
+
+/** The public "order-photos" bucket (see supabase/migrations). File names are random. */
+export function photoStore(db: SupabaseClient, bucket = 'order-photos'): PhotoStore {
+  return {
+    async upload(path, bytes, contentType) {
+      const { error } = await db.storage.from(bucket).upload(path, bytes, { contentType, upsert: false, cacheControl: '31536000' })
+      if (error) throw new Error(`Couldn’t store photo: ${error.message}`)
+      return db.storage.from(bucket).getPublicUrl(path).data.publicUrl
+    },
   }
 }

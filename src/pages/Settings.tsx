@@ -56,6 +56,17 @@ export function Settings() {
                 onChange={(e) => setDraft({ ...draft, defaultShippingFee: Math.floor(Number(e.target.value) || 0) })}
               />
             </Field>
+            <Field label="Transaction fee (%)" hint="What M-Pesa / card processing costs, as a share of each payment. Used for net revenue on the Overview.">
+              <input
+                type="number"
+                min={0}
+                max={10}
+                step={0.1}
+                className={inputClass}
+                value={draft.transactionFeePercent}
+                onChange={(e) => setDraft({ ...draft, transactionFeePercent: Math.max(0, Number(e.target.value) || 0) })}
+              />
+            </Field>
             <Field label="Payout schedule">
               <select className={inputClass} value={draft.payoutSchedule} onChange={(e) => setDraft({ ...draft, payoutSchedule: e.target.value as SettingsT['payoutSchedule'] })}>
                 <option value="WEEKLY">Weekly</option>

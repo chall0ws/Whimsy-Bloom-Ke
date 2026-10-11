@@ -1,4 +1,4 @@
-import { Ban, CircleCheck, Clock, CreditCard, Lock, MapPin, MessageCircle, Plus, Send, Trash2, Truck, Undo2, UserRound } from 'lucide-react'
+import { Ban, Camera, CircleCheck, Clock, CreditCard, Lock, MapPin, MessageCircle, Plus, Send, Trash2, Truck, Undo2, UserRound } from 'lucide-react'
 import { useState } from 'react'
 import { LIVE } from '../config'
 import type { OrderDraft } from '../domain/actions'
@@ -24,6 +24,7 @@ import {
 } from '../domain/orders'
 import type { AppState, Channel, FulfilmentMethod, Order, PaymentMethod, Thread } from '../domain/types'
 import { readyMessage, whatsappLink, whatsappNumber } from '../domain/whatsapp'
+import { uploadOrderPhoto } from '../lib/photo'
 import { navigate } from '../router'
 import { userName, useStore } from '../state/store'
 import { Button, ChannelIcon, cx, EmptyState, Field, inputClass, Modal, Notice, StatusChip, useDialog } from './ui'
@@ -65,8 +66,10 @@ export function StatusControl({ order, size = 'md' }: { order: Order; size?: 'sm
               type="button"
               aria-pressed={active}
               disabled={blocked}
-              title={blocked ? why : s === 'READY' ? 'Set the delivery fee and ask for the balance' : undefined}
+              title={blocked ? why : s === 'READY' ? (active ? 'Change the delivery fee or photo' : 'Set the delivery fee and ask for the balance') : undefined}
               onClick={() => {
+                // While the balance is unpaid, "Ready" reopens to fix the delivery fee or add a photo.
+                if (active && s === 'READY' && due > 0) ready.show()
                 if (active) return
                 if (s === 'SHIPPED') setShipping(true)
                 else if (s === 'READY') ready.show()
@@ -106,7 +109,7 @@ function orderLink(order: Order): string {
 }
 
 /** WhatsApp link with the "ready" message for this order and delivery fee, or null without a phone number. */
-function readyWhatsApp(state: AppState, order: Order, deliveryFee: number): string | null {
+function readyWhatsApp(state: AppState, order: Order, deliveryFee: number, photoUrl = order.readyPhotoUrl): string | null {
   const customer = state.customers.find((c) => c.id === order.customerId)
   const phone = whatsappNumber(customer?.phone)
   if (!phone) return null
@@ -120,6 +123,8 @@ function readyWhatsApp(state: AppState, order: Order, deliveryFee: number): stri
     deliveryFee,
     balance: Math.max(0, itemsSubtotal(order) + deliveryFee - paid),
     payUrl: orderLink(order),
+    // Only a stored photo has a link to share (the demo keeps photos inline).
+    photoUrl: photoUrl?.startsWith('https://') ? photoUrl : undefined,
   })
   return whatsappLink(phone, text)
 }
@@ -135,17 +140,29 @@ function ReadyDialog({ order, open, onClose }: { order: Order; open: boolean; on
   const suggested = order.status === 'READY' ? order.fulfilment.deliveryFee : order.fulfilment.method === 'SHIPPING' ? state.settings.defaultShippingFee : undefined
   const [fee, setFee] = useState(suggested === undefined ? '' : String(suggested))
   const [sendWhatsApp, setSendWhatsApp] = useState(Boolean(phone))
+  const [photo, setPhoto] = useState<string | undefined>(order.readyPhotoUrl)
+  const [uploading, setUploading] = useState(false)
   const deliveryFee = fee.trim() === '' ? NaN : Number(fee)
   const valid = Number.isInteger(deliveryFee) && deliveryFee >= 0
   const paid = amountPaid(order)
   const balance = valid ? Math.max(0, itemsSubtotal(order) + deliveryFee - paid) : 0
 
+  // The photo uploads as soon as it's chosen, so "Mark ready" can open WhatsApp straight away.
+  const choosePhoto = async (file: File | undefined) => {
+    if (!file) return
+    setUploading(true)
+    const result = await uploadOrderPhoto(order.id, file)
+    setUploading(false)
+    if (result.ok) setPhoto(result.url)
+    else toast(result.error, 'error')
+  }
+
   const confirm = async () => {
     if (!valid) return toast('Enter the delivery fee in KES (0 if it’s free).', 'error')
     // Open WhatsApp straight from the tap, so the browser doesn't block it as a pop-up.
-    const link = sendWhatsApp ? readyWhatsApp(state, order, deliveryFee) : null
+    const link = sendWhatsApp ? readyWhatsApp(state, order, deliveryFee, photo) : null
     if (link) window.open(link, '_blank', 'noopener')
-    const r = await dispatch({ type: 'ORDER_READY', orderId: order.id, deliveryFee })
+    const r = await dispatch({ type: 'ORDER_READY', orderId: order.id, deliveryFee, photoUrl: photo })
     if (r.ok) onClose()
   }
 
@@ -160,7 +177,7 @@ function ReadyDialog({ order, open, onClose }: { order: Order; open: boolean; on
           <Button variant="ghost" onClick={onClose}>
             Not yet
           </Button>
-          <Button variant="primary" onClick={confirm} disabled={!valid}>
+          <Button variant="primary" onClick={confirm} disabled={!valid || uploading}>
             <CircleCheck size={15} aria-hidden /> {sendWhatsApp && phone ? 'Mark ready & message on WhatsApp' : 'Mark ready'}
           </Button>
         </>
@@ -181,6 +198,31 @@ function ReadyDialog({ order, open, onClose }: { order: Order; open: boolean; on
             autoFocus
           />
         </Field>
+        <div>
+          <div className="mb-1 text-xs font-semibold text-ink-2">Photo of the finished bouquet (optional)</div>
+          <div className="flex items-center gap-3">
+            {photo && <img src={photo} alt="Finished bouquet" className="h-20 w-16 shrink-0 rounded-lg border border-line object-cover" />}
+            <label className={cx('inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-full border border-line-strong bg-surface px-4 text-sm font-medium hover:bg-surface-2', uploading && 'pointer-events-none opacity-60')}>
+              <Camera size={15} aria-hidden /> {uploading ? 'Uploading…' : photo ? 'Change photo' : 'Add a photo'}
+              <input
+                id="ready-photo"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/*"
+                className="sr-only"
+                onChange={(e) => {
+                  choosePhoto(e.target.files?.[0])
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            {photo && !uploading && (
+              <button type="button" onClick={() => setPhoto(undefined)} className="text-xs font-medium text-ink-2 hover:text-red-ink">
+                Remove
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted">The customer sees it on their order page and in the chat{phone ? ', and the WhatsApp message links to it' : ''}.</p>
+        </div>
         <section className="rounded-xl border border-line text-sm">
           <div className="flex justify-between border-b border-line px-4 py-2">
             <span>Bouquets</span>
@@ -496,6 +538,13 @@ export function OrderDrawer() {
             <span className="tabular">{formatKES(amountDue(order) > 0 ? amountDue(order) : Math.max(0, orderTotal(order) - amountPaid(order)))}</span>
           </div>
         </section>
+
+        {order.readyPhotoUrl && (
+          <div>
+            <div className="eyebrow mb-1">Ready photo</div>
+            <img src={order.readyPhotoUrl} alt={`${order.number} finished`} className="max-h-72 rounded-xl border border-line object-cover" />
+          </div>
+        )}
 
         {order.customisation && (
           <div>

@@ -3,5 +3,6 @@
   "/api/action": "action",
   "/api/pay/start": "pay-start",
   "/api/pay/verify": "pay-verify",
-  "/api/pay/webhook": "pay-webhook"
+  "/api/pay/webhook": "pay-webhook",
+  "/api/order-photo": "order-photo"
 }

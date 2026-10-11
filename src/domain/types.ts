@@ -119,6 +119,8 @@ export interface Order {
   status: OrderStatus
   createdAt: string
   readyAt?: string
+  /** Photo of the finished bouquet, taken when it was marked ready. */
+  readyPhotoUrl?: string
   shippedAt?: string
   history: StatusEvent[]
   materialsDeducted: boolean
@@ -154,6 +156,8 @@ export interface Message {
   /** A payment-link message renders as a "Pay with M-Pesa" card in the customer's chat. */
   kind?: 'PAYMENT_LINK'
   orderId?: string
+  /** A photo shown with the message (e.g. the finished bouquet). */
+  imageUrl?: string
 }
 
 /** A live-chat conversation started by a customer from the chat page or the order form. */
@@ -213,6 +217,8 @@ export interface AuditEvent {
 
 export interface Settings {
   serviceFee: number
+  /** Card / M-Pesa processing fee, as a percentage of what customers pay (e.g. 1.5). */
+  transactionFeePercent: number
   feeOnHandDelivery: boolean
   defaultShippingFee: number
   payoutSchedule: 'WEEKLY' | 'MONTHLY'

@@ -87,6 +87,17 @@ export function PayButton({ order, size = 'sm' }: { order: Order; size?: 'sm' | 
   )
 }
 
+/** The photo she took when the bouquet was finished. */
+export function ReadyPhoto({ order }: { order: Order }) {
+  if (!order.readyPhotoUrl) return null
+  return (
+    <figure className="overflow-hidden rounded-2xl border border-line bg-surface-2">
+      <img src={order.readyPhotoUrl} alt={`Your finished order ${order.number}`} loading="lazy" className="max-h-96 w-full object-cover" />
+      <figcaption className="px-3 py-2 text-xs text-ink-2">Your bouquet, ready for you 🌸</figcaption>
+    </figure>
+  )
+}
+
 /** What's been paid and what's still to come, in customer words. */
 export function PaymentSummary({ order }: { order: Order }) {
   const paid = amountPaid(order)

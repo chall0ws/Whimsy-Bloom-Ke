@@ -274,6 +274,7 @@ function CustomerBubble({ message: m }: { message: Message }) {
   return (
     <div className={cx('flex', mine ? 'justify-end' : 'justify-start')}>
       <div className={cx('max-w-[82%] rounded-2xl px-3.5 py-2 text-sm', mine ? 'rounded-br-md bg-pink text-[#3b1a24]' : 'rounded-bl-md border border-line bg-surface text-ink')}>
+        {m.imageUrl && <img src={m.imageUrl} alt="Photo" loading="lazy" className="mb-1.5 max-h-64 w-full rounded-xl object-cover" />}
         <p className="whitespace-pre-wrap">{m.text}</p>
         {m.kind === 'PAYMENT_LINK' && m.orderId && <PaymentCard orderId={m.orderId} />}
         <div className={cx('mt-0.5 text-right text-[10px]', mine ? 'opacity-70' : 'text-muted')}>{formatTime(m.at)}</div>

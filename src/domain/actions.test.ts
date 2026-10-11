@@ -3,6 +3,7 @@ import { applyAction, AUTO_REPLY, type Action, type OrderDraft } from './actions
 import { parseStaffList, staffRoleFor } from './auth'
 import { DEFAULT_SETTINGS, MATERIALS, PRODUCTS, RECIPES, USERS } from './catalog'
 import { feeSummary } from './fees'
+import { netRevenueReport, orderMoney } from './metrics'
 import { amountDue, amountPaid, netRevenue, orderTotal } from './orders'
 import { createSeedState } from './seed'
 import type { AppState, Order } from './types'
@@ -204,6 +205,25 @@ describe('payment', () => {
     expect(amountDue(state.orders[0])).toBe(1750 + 500)
   })
 
+  it('keeps a photo of the finished bouquet and shows it to the customer once', () => {
+    const created = createPaidOrder(emptyState())
+    const bad = applyAction(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrl: 'javascript:alert(1)' }, NOW)
+    expect(bad.ok === false && bad.error).toBe('That photo couldn’t be used. Please add it again.')
+    const huge = `data:image/jpeg;base64,${'A'.repeat(400_000)}`
+    expect(applyAction(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrl: huge }, NOW).ok).toBe(false)
+
+    const photo = 'https://example.supabase.co/storage/v1/object/public/order-photos/o-1/abc.jpg'
+    let state = apply(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrl: photo })
+    expect(state.orders[0].readyPhotoUrl).toBe(photo)
+    expect(state.threads[0].messages.at(-1)).toMatchObject({ kind: 'PAYMENT_LINK', imageUrl: photo })
+    // Fixing the delivery fee doesn't post the photo again.
+    state = apply(state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 400, photoUrl: photo })
+    expect(state.threads[0].messages.at(-1)!.imageUrl).toBeUndefined()
+    // Removing it in the dialog removes it from the order.
+    state = apply(state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 400 })
+    expect(state.orders[0].readyPhotoUrl).toBeUndefined()
+  })
+
   it('counts an older order paid in full before deposits existed', () => {
     const created = createPaidOrder(emptyState())
     const legacy: Order = { ...created.state.orders[0], payment: { status: 'PAID', method: 'MPESA', reference: 'OLD1', paidAt: NOW.toISOString() }, fulfilment: { ...created.state.orders[0].fulfilment, deliveryFee: 300 } }
@@ -227,8 +247,21 @@ describe('service fee', () => {
     const created = createPaidOrder(emptyState())
     const state = applyAll(created.state, ship(created.orderId))
     expect(state.fees).toHaveLength(1)
-    expect(state.fees[0].amount).toBe(100)
-    expect(feeSummary(state).payable).toBe(100)
+    expect(state.fees[0].amount).toBe(75)
+    expect(feeSummary(state).payable).toBe(75)
+  })
+
+  it('works out net revenue: paid, less 1.5% transaction fee, service fee and delivery', () => {
+    const created = createPaidOrder(emptyState())
+    const shipped = applyAll(created.state, ship(created.orderId))
+    // 3,500 bouquet + 300 delivery paid; 1.5% of 3,800 = 57; KES 75 service fee; 300 to the courier.
+    expect(orderMoney(shipped, shipped.orders[0])).toMatchObject({ received: 3800, transactionFee: 57, serviceFee: 75, delivery: 300, net: 3800 - 57 - 75 - 300 })
+    // Only the deposit so far: no delivery or service fee yet.
+    expect(orderMoney(created.state, created.state.orders[0])).toMatchObject({ received: 1750, transactionFee: 26, serviceFee: 0, delivery: 0, net: 1724 })
+    const report = netRevenueReport(shipped)
+    expect(report).toMatchObject({ received: 3800, transactionFee: 57, serviceFee: 75, delivery: 300, net: 3368 })
+    // Unpaid orders don't appear.
+    expect(netRevenueReport(createPaidOrder(emptyState(), { payment: { kind: 'UNPAID' } }).state).rows).toHaveLength(0)
   })
 
   it('does not charge before shipping', () => {
@@ -326,16 +359,16 @@ describe('payouts', () => {
   }
 
   it('only reduces the balance once the super admin confirms receipt', () => {
-    let state = apply(withFees(), { type: 'RECORD_PAYOUT', amount: 200, reference: 'sxy1' })
-    expect(feeSummary(state)).toMatchObject({ collected: 300, inTransit: 200, payable: 300, availableToSend: 100 })
+    let state = apply(withFees(), { type: 'RECORD_PAYOUT', amount: 150, reference: 'sxy1' })
+    expect(feeSummary(state)).toMatchObject({ collected: 225, inTransit: 150, payable: 225, availableToSend: 75 })
     state = apply(state, SIGN_IN_PARTNER)
     state = apply(state, { type: 'CONFIRM_PAYOUT', payoutId: state.payouts[0].id })
-    expect(feeSummary(state)).toMatchObject({ paidOut: 200, inTransit: 0, payable: 100 })
+    expect(feeSummary(state)).toMatchObject({ paidOut: 150, inTransit: 0, payable: 75 })
   })
 
   it('refuses to pay out more than is owed', () => {
-    const state = apply(withFees(), { type: 'RECORD_PAYOUT', amount: 300, reference: 'A' })
-    expect(applyAction(state, { type: 'RECORD_PAYOUT', amount: 100, reference: 'B' }, NOW).ok).toBe(false)
+    const state = apply(withFees(), { type: 'RECORD_PAYOUT', amount: 225, reference: 'A' })
+    expect(applyAction(state, { type: 'RECORD_PAYOUT', amount: 75, reference: 'B' }, NOW).ok).toBe(false)
   })
 })
 

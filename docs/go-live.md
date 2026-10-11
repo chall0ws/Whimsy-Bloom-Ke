@@ -18,6 +18,7 @@ It takes about 20 minutes. You need the Vercel project (with the Supabase integr
 
 1. Open your project at [supabase.com](https://supabase.com) → **SQL Editor** → **New query**.
 2. Open `supabase/migrations/20261010120000_whimsy_core.sql` from this repository, copy all of it, paste it in and click **Run**. It should end with *Success. No rows returned*.
+3. Click **New query** again. Open `supabase/migrations/20261011200000_order_photos_and_fee.sql`, copy all of it, paste it in and click **Run**. It creates the `order-photos` storage bucket (for the "your order is ready" photos) and sets the service fee to KES 75. It's safe to run more than once.
 
 What it creates:
 
@@ -27,6 +28,7 @@ What it creates:
 | `app_meta` | Settings and counters (next order number), plus a version number so two people saving at once can't overwrite each other. |
 | `apply_changes(...)` | Saves a batch of changes in one go. Only the server can call it. |
 | `orders_overview`, `customers_overview`, `service_fees_overview` | Read-only views, handy for looking at the data in **Table Editor** or exporting to a spreadsheet. |
+| `order-photos` (Storage) | Photos of finished bouquets. Only the server uploads; each photo has a random link the customer sees. |
 
 Row-level security is **on with no policies**, so the public (anon) key can't read or change anything. Only the server, using the service-role key, can.
 

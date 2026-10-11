@@ -5,13 +5,13 @@ import { serverEnv } from './env'
 import { paystackClient } from './paystack'
 import { adminClient, callerFromToken, SupabaseRepo } from './supabaseRepo'
 
-export function readBody(req: IncomingMessage): Promise<string> {
+export function readBody(req: IncomingMessage, limit = 1_000_000): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = ''
     req.setEncoding('utf8')
     req.on('data', (chunk) => {
       body += chunk
-      if (body.length > 1_000_000) reject(new Error('Too large'))
+      if (body.length > limit) reject(new Error('Too large'))
     })
     req.on('end', () => resolve(body))
     req.on('error', reject)
@@ -25,8 +25,8 @@ export function send(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body))
 }
 
-export async function readJson<T>(req: IncomingMessage): Promise<T> {
-  const raw = await readBody(req)
+export async function readJson<T>(req: IncomingMessage, limit?: number): Promise<T> {
+  const raw = await readBody(req, limit)
   return (raw ? JSON.parse(raw) : {}) as T
 }
 
