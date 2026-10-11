@@ -2,7 +2,7 @@ import { Plus, Search, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { PageHeader } from '../components/Layout'
 import { CreateOrderDialog, OrderTable } from '../components/orders'
-import { Button, Card, inputClass, Segmented } from '../components/ui'
+import { Button, Card, inputClass, Segmented, useDialog } from '../components/ui'
 import { relativeTime } from '../domain/format'
 import { nextUpOrder, orderSummary, sortNewestFirst, sourceLabel } from '../domain/orders'
 import type { Channel, OrderStatus } from '../domain/types'
@@ -15,7 +15,7 @@ export function Orders() {
   const [filter, setFilter] = useState<Filter>('OPEN')
   const [channel, setChannel] = useState<'ALL' | Channel>('ALL')
   const [query, setQuery] = useState('')
-  const [creating, setCreating] = useState(false)
+  const creating = useDialog()
   const next = nextUpOrder(state.orders)
 
   const count = (s: OrderStatus) => state.orders.filter((o) => o.status === s).length
@@ -38,7 +38,7 @@ export function Orders() {
         title="Orders"
         subtitle="Web-form, live-chat and phone orders in one queue."
         actions={
-          <Button variant="primary" onClick={() => setCreating(true)}>
+          <Button variant="primary" onClick={creating.show}>
             <Plus size={16} aria-hidden /> New order
           </Button>
         }
@@ -88,7 +88,7 @@ export function Orders() {
         <OrderTable orders={orders} emptyText={q ? 'No orders match that search.' : 'Nothing here — all caught up 🌸'} />
       </Card>
 
-      <CreateOrderDialog key={String(creating)} open={creating} onClose={() => setCreating(false)} />
+      <CreateOrderDialog key={creating.key} open={creating.open} onClose={creating.hide} />
     </>
   )
 }

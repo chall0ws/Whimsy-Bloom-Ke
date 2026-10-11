@@ -1,5 +1,5 @@
 import { CircleCheck, CircleUserRound, Globe, MessageCircle, Phone, TriangleAlert, X } from 'lucide-react'
-import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { STATUS_LABEL } from '../domain/orders'
 import type { Channel, OrderStatus } from '../domain/types'
 import { useStore } from '../state/store'
@@ -39,6 +39,34 @@ export function Card({
   )
 }
 
+/**
+ * Keeps something on screen for a moment after it's closed, so it can animate out.
+ * `leaving` is true during that moment.
+ */
+export function usePresence(open: boolean, exitMs = 220) {
+  const [mounted, setMounted] = useState(open)
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      return
+    }
+    const timer = setTimeout(() => setMounted(false), exitMs)
+    return () => clearTimeout(timer)
+  }, [open, exitMs])
+  return { mounted: open || mounted, leaving: !open && mounted }
+}
+
+/**
+ * Open/closed state for a dialog whose form starts fresh each time it opens.
+ * Use `key` as the dialog's key: it changes on opening (not closing), so closing can animate.
+ */
+export function useDialog() {
+  const [state, setState] = useState({ open: false, key: 0 })
+  const show = useCallback(() => setState((s) => ({ open: true, key: s.key + 1 })), [])
+  const hide = useCallback(() => setState((s) => ({ ...s, open: false })), [])
+  return { open: state.open, key: state.key, show, hide }
+}
+
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'pink'
   size?: 'sm' | 'md'
@@ -50,7 +78,7 @@ export function Button({ variant = 'secondary', size = 'md', className, ...props
       type="button"
       {...props}
       className={cx(
-        'inline-flex items-center justify-center gap-1.5 rounded-full font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 whitespace-nowrap',
+        'inline-flex items-center justify-center gap-1.5 rounded-full font-medium transition duration-200 ease-out active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100 whitespace-nowrap',
         size === 'sm' ? 'h-8 px-3 text-xs' : 'h-10 px-4 text-sm',
         variant === 'primary' && 'bg-green text-on-green hover:opacity-90',
         variant === 'pink' && 'bg-pink text-[#3b1a24] hover:opacity-90',
@@ -133,11 +161,12 @@ export function Modal({
       previous?.focus?.()
     }
   }, [open, onClose])
-  if (!open) return null
+  const { mounted, leaving } = usePresence(open)
+  if (!mounted) return null
   const drawer = variant === 'drawer'
   return (
-    <div className={cx('fixed inset-0 z-50 flex', drawer ? 'justify-end' : 'items-end sm:items-center justify-center sm:p-4')}>
-      <div className="absolute inset-0 bg-[#1e2a23]/40 backdrop-blur-[1px]" onClick={onClose} aria-hidden />
+    <div className={cx('fixed inset-0 z-50 flex', drawer ? 'justify-end' : 'items-end sm:items-center justify-center sm:p-4', leaving && 'pointer-events-none')}>
+      <div className={cx('absolute inset-0 bg-[#1e2a23]/40 backdrop-blur-[1px]', leaving ? 'anim-fade-out' : 'anim-fade-in')} onClick={onClose} aria-hidden />
       <div
         ref={panel}
         role="dialog"
@@ -145,6 +174,7 @@ export function Modal({
         tabIndex={-1}
         className={cx(
           'relative flex max-h-full flex-col bg-surface shadow-2xl outline-none',
+          drawer ? (leaving ? 'anim-drawer-out' : 'anim-drawer-in') : leaving ? 'anim-dialog-out' : 'anim-dialog-in',
           drawer
             ? 'h-full w-full max-w-xl border-l border-line'
             : cx('w-full rounded-t-2xl sm:rounded-2xl border border-line max-h-[92vh]', wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'),
@@ -245,7 +275,7 @@ export function Toasts() {
         <div
           key={t.id}
           className={cx(
-            'pointer-events-auto flex max-w-md items-start gap-3 rounded-2xl px-4 py-3 text-sm shadow-lg',
+            'anim-toast pointer-events-auto flex max-w-md items-start gap-3 rounded-2xl px-4 py-3 text-sm shadow-lg',
             t.tone === 'error' ? 'bg-red-ink text-surface' : 'bg-ink text-bg',
           )}
         >

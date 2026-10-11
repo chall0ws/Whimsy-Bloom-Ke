@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { ChatWidget, customerUnread, useMyThread } from '../components/chat/ChatWidget'
 import { BloomMark, HeartDivider, Logo, Script } from '../components/Logo'
 import { TeamPreviewBar } from '../components/TeamPreviewBar'
-import { cx } from '../components/ui'
+import { cx, usePresence } from '../components/ui'
 import type { ShopRoute } from '../router'
 import { useStore } from '../state/store'
 import { useCart } from './cart'
@@ -57,7 +57,7 @@ export function ShopLayout({ route, children, wide = true }: { route: ShopRoute;
               <UserRound size={17} aria-hidden />
               <span className="hidden sm:inline">{account ? 'My account' : 'Sign in'}</span>
             </a>
-            <a href="#/cart" className="relative inline-flex h-10 items-center gap-1.5 rounded-full bg-green px-4 text-sm font-medium text-on-green hover:opacity-90" aria-label={`Cart, ${count} items`}>
+            <a href="#/cart" className="relative inline-flex h-10 items-center gap-1.5 rounded-full bg-green px-4 text-sm font-medium text-on-green hover:opacity-90 active:scale-[0.97]" aria-label={`Cart, ${count} items`}>
               <ShoppingBag size={17} aria-hidden />
               <span className="hidden sm:inline">Cart</span>
               {count > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-pink px-1.5 text-[11px] font-bold text-[#3b1a24]">{count}</span>}
@@ -93,7 +93,7 @@ export function ShopLayout({ route, children, wide = true }: { route: ShopRoute;
             <a href="#/admin" className="hover:text-ink">
               Team sign-in
             </a>
-            <a href="privacy.html" className="hover:text-ink">
+            <a href="#/privacy" className="hover:text-ink">
               Privacy
             </a>
           </nav>
@@ -115,21 +115,25 @@ function ChatBubble() {
   const identity = customer?.phone ? { customerId: customer.id, name: customer.name, phone: customer.phone } : undefined
   const thread = identity ? state.threads.find((t) => t.customerId === identity.customerId) : guestThread
   const unseen = customerUnread(thread)
+  const { mounted, leaving } = usePresence(open, 180)
   return (
     <>
-      {open && (
+      {mounted && (
         <ChatWidget
           startedFrom="ORDER_FORM"
           identity={identity}
           onClose={() => setOpen(false)}
-          className="fixed inset-x-3 bottom-3 top-16 z-50 sm:inset-x-auto sm:right-6 sm:top-auto sm:bottom-24 sm:h-[560px] sm:w-[380px]"
+          className={cx(
+            'fixed inset-x-3 bottom-3 top-16 z-50 origin-bottom-right sm:inset-x-auto sm:right-6 sm:top-auto sm:bottom-24 sm:h-[560px] sm:w-[380px]',
+            leaving ? 'anim-pop-out pointer-events-none' : 'anim-pop-in',
+          )}
         />
       )}
       <button
         type="button"
         onClick={() => setOpen(!open)}
         className={cx(
-          'fixed bottom-5 right-5 z-50 h-14 items-center gap-2 rounded-full bg-green px-5 font-medium text-on-green shadow-xl hover:opacity-95',
+          'fixed bottom-5 right-5 z-50 h-14 items-center gap-2 rounded-full bg-green px-5 font-medium text-on-green shadow-xl hover:-translate-y-0.5 hover:shadow-2xl active:scale-[0.97]',
           open ? 'hidden sm:inline-flex' : 'inline-flex',
         )}
         aria-expanded={open}

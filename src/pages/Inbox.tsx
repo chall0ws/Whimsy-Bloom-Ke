@@ -2,7 +2,7 @@ import { ChevronLeft, CircleCheck, ExternalLink, Mail, MailOpen, Plus, Search, S
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PageHeader } from '../components/Layout'
 import { CreateOrderDialog } from '../components/orders'
-import { Avatar, Button, cx, EmptyState, inputClass, Segmented, StatusChip, UnreadBadge } from '../components/ui'
+import { Avatar, Button, cx, EmptyState, inputClass, Segmented, StatusChip, UnreadBadge, useDialog } from '../components/ui'
 import { AUTO_REPLY } from '../domain/actions'
 import { formatDate, formatKES, formatTime, isSameDay, relativeTime } from '../domain/format'
 import { customerStats, lastMessageAt, unreadCount, unreadTotals } from '../domain/metrics'
@@ -154,7 +154,7 @@ const QUICK_REPLIES = ['Thank you so much! 🌸', 'Your bouquet is being made ri
 function Conversation({ thread, online, typing }: { thread: Thread; online: boolean; typing: boolean }) {
   const { state, dispatch } = useStore()
   const [text, setText] = useState('')
-  const [creating, setCreating] = useState(false)
+  const creating = useDialog()
   const end = useRef<HTMLDivElement>(null)
   const notifyTyping = useMemo(() => makeTypingNotifier(thread.id, 'shop'), [thread.id])
   const customer = state.customers.find((c) => c.id === thread.customerId)
@@ -200,7 +200,7 @@ function Conversation({ thread, online, typing }: { thread: Thread; online: bool
             {n > 0 ? <MailOpen size={14} aria-hidden /> : <Mail size={14} aria-hidden />}
             <span className="hidden sm:inline">{n > 0 ? 'Mark read' : 'Mark unread'}</span>
           </Button>
-          <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
+          <Button size="sm" variant="primary" onClick={creating.show}>
             <Plus size={14} aria-hidden /> Create order
           </Button>
         </div>
@@ -269,7 +269,7 @@ function Conversation({ thread, online, typing }: { thread: Thread; online: bool
         </form>
       </footer>
 
-      <CreateOrderDialog key={`${thread.id}-${creating}`} open={creating} onClose={() => setCreating(false)} thread={thread} />
+      <CreateOrderDialog key={`${thread.id}-${creating.key}`} open={creating.open} onClose={creating.hide} thread={thread} />
     </section>
   )
 }

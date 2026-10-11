@@ -1,7 +1,7 @@
 import { CircleCheck, PackagePlus, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Button, Card, cx, Field, inputClass, Modal } from '../components/ui'
+import { Button, Card, cx, Field, inputClass, Modal, useDialog } from '../components/ui'
 import { formatDateTime, formatNumber } from '../domain/format'
 import { buildableUnits, stockLevel, type StockLevel } from '../domain/metrics'
 import { productName } from '../domain/orders'
@@ -18,7 +18,7 @@ const LEVEL_LABEL: Record<StockLevel, string> = { OK: 'In stock', LOW: 'Low', OU
 export function Inventory() {
   const { state } = useStore()
   const [buying, setBuying] = useState<Material | null>(null)
-  const [open, setOpen] = useState(false)
+  const purchase = useDialog()
   const low = state.materials.filter((m) => stockLevel(m.onHand, m.reorderLevel) !== 'OK')
 
   return (
@@ -31,7 +31,7 @@ export function Inventory() {
             variant="primary"
             onClick={() => {
               setBuying(state.materials[0])
-              setOpen(true)
+              purchase.show()
             }}
           >
             <PackagePlus size={16} aria-hidden /> Record purchase
@@ -83,7 +83,7 @@ export function Inventory() {
                           variant="ghost"
                           onClick={() => {
                             setBuying(m)
-                            setOpen(true)
+                            purchase.show()
                           }}
                         >
                           + Add stock
@@ -158,7 +158,7 @@ export function Inventory() {
         </Card>
       </div>
 
-      {buying && <PurchaseDialog key={`${buying.id}-${open}`} open={open} initial={buying} onClose={() => setOpen(false)} />}
+      {buying && <PurchaseDialog key={`${buying.id}-${purchase.key}`} open={purchase.open} initial={buying} onClose={purchase.hide} />}
     </>
   )
 }

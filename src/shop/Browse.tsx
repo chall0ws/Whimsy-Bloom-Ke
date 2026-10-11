@@ -74,7 +74,7 @@ export function Home() {
             See all bouquets <ArrowRight size={14} aria-hidden />
           </a>
         </div>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+        <div className="anim-stagger grid grid-cols-1 gap-5 sm:grid-cols-3">
           {favourites.map((p) => (
             <ProductCard key={p.id} product={p} />
           ))}
@@ -105,9 +105,9 @@ export function ProductCard({ product }: { product: Product }) {
   const { add } = useCart()
   const { toast } = useStore()
   return (
-    <article className="group flex flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-card">
+    <article className="group flex flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-card transition duration-300 ease-out hover:-translate-y-1 hover:shadow-lg">
       <a href={`#/shop/${product.id}`} className="block">
-        <ProductArt productId={product.id} label={product.name} className="aspect-square transition-transform duration-300 group-hover:scale-[1.02]" />
+        <ProductArt productId={product.id} label={product.name} className="aspect-square transition-transform duration-500 ease-out group-hover:scale-[1.04]" />
       </a>
       <div className="flex flex-1 flex-col gap-1 p-4">
         <div className="flex items-baseline justify-between gap-3">
@@ -147,7 +147,7 @@ export function Catalog() {
         <HeartDivider className="mx-auto mt-3 w-48" />
         <p className="mt-3 text-sm text-ink-2">Every bouquet is handmade to order. Add your colours and a card message on the next page.</p>
       </div>
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="anim-stagger grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {state.products.map((p) => (
           <ProductCard key={p.id} product={p} />
         ))}
