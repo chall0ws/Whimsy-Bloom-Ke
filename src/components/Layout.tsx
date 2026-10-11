@@ -16,7 +16,9 @@ export function Layout({ route, children }: { route: AdminRoute; children: React
   const unread = unreadTotals(state.threads).messages
   const awaiting = state.orders.filter((o) => o.status === 'PENDING').length
 
-  useEffect(() => setMenuOpen(false), [route])
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [route])
   useEffect(() => {
     document.title = unread > 0 ? `(${unread}) Whimsy & Bloom` : 'Whimsy & Bloom'
   }, [unread])

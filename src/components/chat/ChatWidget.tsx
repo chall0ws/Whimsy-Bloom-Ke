@@ -226,7 +226,10 @@ function Conversation({ thread, onReset, initialText = '' }: { thread: Thread; o
     if (unseen > 0 && document.visibilityState === 'visible') dispatch({ type: 'CUSTOMER_READ', threadId: thread.id })
   }, [unseen, thread.id, dispatch])
 
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [thread.messages.length])
+  // Braces matter: newer browsers return a promise from scrollIntoView, and React would try to call it as a clean-up.
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'end' })
+  }, [thread.messages.length])
 
   const send = async () => {
     const r = await dispatch({ type: 'CUSTOMER_SEND_MESSAGE', threadId: thread.id, text })
