@@ -93,6 +93,9 @@ export function ShopLayout({ route, children, wide = true }: { route: ShopRoute;
             <a href="#/admin" className="hover:text-ink">
               Team sign-in
             </a>
+            <a href="privacy.html" className="hover:text-ink">
+              Privacy
+            </a>
           </nav>
           <p className="mt-4 text-xs text-muted">Whimsy &amp; Bloom · Handmade flowers, made with love.</p>
         </div>
