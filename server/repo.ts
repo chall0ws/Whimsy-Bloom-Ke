@@ -31,6 +31,10 @@ export class MemoryRepo implements Repo {
     if (version !== this.version) return null
     const changes = diff(prev, next)
     if (!hasChanges(changes, prev)) return this.version
+    // Like Postgres: one save can't write the same row twice.
+    const keys = changes.upserts.map((r) => `${r.kind}:${r.id}`)
+    const twice = keys.filter((k, i) => keys.indexOf(k) !== i)
+    if (twice.length) throw new Error(`Couldn’t save: ON CONFLICT DO UPDATE command cannot affect row a second time (${twice.join(', ')})`)
     changes.upserts.forEach((r) => this.rows.set(`${r.kind}:${r.id}`, structuredClone(r)))
     changes.deletes.forEach((r) => this.rows.delete(`${r.kind}:${r.id}`))
     this.meta = structuredClone(changes.meta)
