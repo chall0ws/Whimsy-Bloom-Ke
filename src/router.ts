@@ -13,6 +13,7 @@ export type ShopRoute =
   | { page: 'account'; tab?: AccountTab }
   | { page: 'chat' }
   | { page: 'privacy' }
+  | { page: 'terms' }
 
 /** The team dashboard, under #/admin. */
 export type AdminRoute =
@@ -56,6 +57,7 @@ export function parseHash(hash: string): Route {
     case 'checkout':
     case 'chat':
     case 'privacy':
+    case 'terms':
       return { page: first }
     case 'thanks':
       return second ? { page: 'thanks', orderId: second } : { page: 'home' }
@@ -87,6 +89,7 @@ export function href(route: Route): string {
     case 'checkout':
     case 'chat':
     case 'privacy':
+    case 'terms':
       return `#/${route.page}`
     case 'overview':
       return '#/admin'
@@ -103,10 +106,11 @@ export function navigate(route: Route) {
   window.location.hash = href(route)
 }
 
-/** The page for the current address. "/privacy" is a plain link for Google and others; everything else uses "#/…". */
+/** The page for the current address. "/privacy" and "/terms" are plain links for Google and others; everything else uses "#/…". */
 export function currentRoute(): Route {
   const hash = window.location.hash.replace(/^#\/?/, '')
-  if (!hash && /\/privacy(\.html)?\/?$/.test(window.location.pathname)) return { page: 'privacy' }
+  const plain = /\/(privacy|terms)(\.html)?\/?$/.exec(window.location.pathname)?.[1]
+  if (!hash && plain) return { page: plain as 'privacy' | 'terms' }
   return parseHash(window.location.hash)
 }
 
