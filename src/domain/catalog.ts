@@ -118,4 +118,5 @@ export const DEFAULT_SETTINGS: Settings = {
   payoutSchedule: 'WEEKLY',
 }
 
-export const COURIERS = ['G4S', 'Fargo Courier', 'Wells Fargo', 'Sendy rider']
+/** Suggestions when shipping: buses and couriers outside Nairobi, couriers abroad. Any name can be typed. */
+export const COURIERS = ['Easy Coach', '2NK Sacco', 'Guardian Angel', 'Mash Poa', 'G4S', 'Fargo Courier', 'Wells Fargo', 'DHL']

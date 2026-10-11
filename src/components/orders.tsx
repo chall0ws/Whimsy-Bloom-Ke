@@ -1,13 +1,17 @@
-import { Ban, Camera, CircleCheck, Clock, CreditCard, Lock, MapPin, MessageCircle, Plus, Send, Trash2, Truck, Undo2, UserRound } from 'lucide-react'
+import { Ban, Camera, CircleCheck, Clock, CreditCard, Lock, MapPin, MessageCircle, Plus, Send, Trash2, Truck, Undo2, UserRound, X } from 'lucide-react'
 import { useState } from 'react'
 import { LIVE } from '../config'
+import { deliveryProblem, DeliveryPicker, NO_DELIVERY, type DeliveryChoice } from './DeliveryPicker'
+import { PhotoGrid } from './PhotoGrid'
 import type { OrderDraft } from '../domain/actions'
 import { COURIERS, forSale } from '../domain/catalog'
 import { formatDate, formatDateTime, formatKES, relativeTime } from '../domain/format'
 import {
   amountDue,
   amountPaid,
-  DELIVERY_LABEL,
+  deliveryLabel,
+  MAX_READY_PHOTOS,
+  readyPhotos,
   earnsServiceFee,
   FLOW_STATUSES,
   itemsSubtotal,
@@ -22,7 +26,7 @@ import {
   sourceLabel,
   STATUS_LABEL,
 } from '../domain/orders'
-import type { AppState, Channel, FulfilmentMethod, Order, PaymentMethod, Thread } from '../domain/types'
+import type { AppState, Channel, Order, PaymentMethod, Thread } from '../domain/types'
 import { readyMessage, whatsappLink, whatsappNumber } from '../domain/whatsapp'
 import { uploadOrderPhoto } from '../lib/photo'
 import { navigate } from '../router'
@@ -109,7 +113,7 @@ function orderLink(order: Order): string {
 }
 
 /** WhatsApp link with the "ready" message for this order and delivery fee, or null without a phone number. */
-function readyWhatsApp(state: AppState, order: Order, deliveryFee: number, photoUrl = order.readyPhotoUrl): string | null {
+function readyWhatsApp(state: AppState, order: Order, deliveryFee: number, photoUrls = readyPhotos(order)): string | null {
   const customer = state.customers.find((c) => c.id === order.customerId)
   const phone = whatsappNumber(customer?.phone)
   if (!phone) return null
@@ -118,13 +122,13 @@ function readyWhatsApp(state: AppState, order: Order, deliveryFee: number, photo
     firstName: customer?.name.split(' ')[0] ?? 'there',
     number: order.number,
     summary: orderSummary(state, order),
-    method: order.fulfilment.method,
+    delivery: deliveryLabel(order.fulfilment),
     remaining: Math.max(0, itemsSubtotal(order) - paid),
     deliveryFee,
     balance: Math.max(0, itemsSubtotal(order) + deliveryFee - paid),
     payUrl: orderLink(order),
-    // Only a stored photo has a link to share (the demo keeps photos inline).
-    photoUrl: photoUrl?.startsWith('https://') ? photoUrl : undefined,
+    // Only stored photos have links to share (the demo keeps photos inline).
+    photoUrls: photoUrls.filter((url) => url.startsWith('https://')),
   })
   return whatsappLink(phone, text)
 }
@@ -140,29 +144,34 @@ function ReadyDialog({ order, open, onClose }: { order: Order; open: boolean; on
   const suggested = order.status === 'READY' ? order.fulfilment.deliveryFee : order.fulfilment.method === 'SHIPPING' ? state.settings.defaultShippingFee : undefined
   const [fee, setFee] = useState(suggested === undefined ? '' : String(suggested))
   const [sendWhatsApp, setSendWhatsApp] = useState(Boolean(phone))
-  const [photo, setPhoto] = useState<string | undefined>(order.readyPhotoUrl)
-  const [uploading, setUploading] = useState(false)
+  const [photos, setPhotos] = useState<string[]>(readyPhotos(order))
+  const [uploading, setUploading] = useState(0)
   const deliveryFee = fee.trim() === '' ? NaN : Number(fee)
   const valid = Number.isInteger(deliveryFee) && deliveryFee >= 0
   const paid = amountPaid(order)
   const balance = valid ? Math.max(0, itemsSubtotal(order) + deliveryFee - paid) : 0
 
-  // The photo uploads as soon as it's chosen, so "Mark ready" can open WhatsApp straight away.
-  const choosePhoto = async (file: File | undefined) => {
-    if (!file) return
-    setUploading(true)
-    const result = await uploadOrderPhoto(order.id, file)
-    setUploading(false)
-    if (result.ok) setPhoto(result.url)
-    else toast(result.error, 'error')
+  // Photos upload as soon as they're chosen, so "Mark ready" can open WhatsApp straight away.
+  const choosePhotos = async (files: File[]) => {
+    const room = MAX_READY_PHOTOS - photos.length - uploading
+    if (files.length > room) toast(`Up to ${MAX_READY_PHOTOS} photos per order.`, 'error')
+    const chosen = files.slice(0, Math.max(0, room))
+    if (chosen.length === 0) return
+    setUploading((n) => n + chosen.length)
+    for (const file of chosen) {
+      const result = await uploadOrderPhoto(order.id, file)
+      setUploading((n) => n - 1)
+      if (result.ok) setPhotos((list) => [...list, result.url])
+      else toast(result.error, 'error')
+    }
   }
 
   const confirm = async () => {
     if (!valid) return toast('Enter the delivery fee in KES (0 if it’s free).', 'error')
     // Open WhatsApp straight from the tap, so the browser doesn't block it as a pop-up.
-    const link = sendWhatsApp ? readyWhatsApp(state, order, deliveryFee, photo) : null
+    const link = sendWhatsApp ? readyWhatsApp(state, order, deliveryFee, photos) : null
     if (link) window.open(link, '_blank', 'noopener')
-    const r = await dispatch({ type: 'ORDER_READY', orderId: order.id, deliveryFee, photoUrl: photo })
+    const r = await dispatch({ type: 'ORDER_READY', orderId: order.id, deliveryFee, photoUrls: photos })
     if (r.ok) onClose()
   }
 
@@ -171,20 +180,20 @@ function ReadyDialog({ order, open, onClose }: { order: Order; open: boolean; on
       open={open}
       onClose={onClose}
       title={`${order.number} is ready?`}
-      subtitle={`${orderSummary(state, order)} · ${DELIVERY_LABEL[order.fulfilment.method]}`}
+      subtitle={`${orderSummary(state, order)} · ${deliveryLabel(order.fulfilment)}`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
             Not yet
           </Button>
-          <Button variant="primary" onClick={confirm} disabled={!valid || uploading}>
+          <Button variant="primary" onClick={confirm} disabled={!valid || uploading > 0}>
             <CircleCheck size={15} aria-hidden /> {sendWhatsApp && phone ? 'Mark ready & message on WhatsApp' : 'Mark ready'}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="Delivery fee (KES)" hint={`${DELIVERY_LABEL[order.fulfilment.method]} · ${order.fulfilment.address}. Enter 0 if delivery is free.`}>
+        <Field label="Delivery fee (KES)" hint={`${deliveryLabel(order.fulfilment)} · ${order.fulfilment.address}. Enter 0 if delivery is free.`}>
           <input
             id="ready-delivery-fee"
             type="number"
@@ -199,29 +208,44 @@ function ReadyDialog({ order, open, onClose }: { order: Order; open: boolean; on
           />
         </Field>
         <div>
-          <div className="mb-1 text-xs font-semibold text-ink-2">Photo of the finished bouquet (optional)</div>
-          <div className="flex items-center gap-3">
-            {photo && <img src={photo} alt="Finished bouquet" className="h-20 w-16 shrink-0 rounded-lg border border-line object-cover" />}
-            <label className={cx('inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-full border border-line-strong bg-surface px-4 text-sm font-medium hover:bg-surface-2', uploading && 'pointer-events-none opacity-60')}>
-              <Camera size={15} aria-hidden /> {uploading ? 'Uploading…' : photo ? 'Change photo' : 'Add a photo'}
-              <input
-                id="ready-photo"
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/*"
-                className="sr-only"
-                onChange={(e) => {
-                  choosePhoto(e.target.files?.[0])
-                  e.target.value = ''
-                }}
-              />
-            </label>
-            {photo && !uploading && (
-              <button type="button" onClick={() => setPhoto(undefined)} className="text-xs font-medium text-ink-2 hover:text-red-ink">
-                Remove
-              </button>
+          <div className="mb-1 text-xs font-semibold text-ink-2">Photos of the finished bouquet (optional, up to {MAX_READY_PHOTOS})</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {photos.map((url, i) => (
+              <div key={url} className="relative">
+                <img src={url} alt={`Finished bouquet, photo ${i + 1}`} className="h-20 w-16 rounded-lg border border-line object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setPhotos((list) => list.filter((u) => u !== url))}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-line bg-surface text-ink-2 shadow-sm hover:text-red-ink"
+                  aria-label={`Remove photo ${i + 1}`}
+                >
+                  <X size={12} aria-hidden />
+                </button>
+              </div>
+            ))}
+            {Array.from({ length: uploading }, (_, i) => (
+              <div key={`up-${i}`} className="h-20 w-16 animate-pulse rounded-lg border border-line bg-surface-2" aria-hidden />
+            ))}
+            {photos.length + uploading < MAX_READY_PHOTOS && (
+              <label className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-full border border-line-strong bg-surface px-4 text-sm font-medium hover:bg-surface-2">
+                <Camera size={15} aria-hidden /> {photos.length || uploading ? 'Add more' : 'Add photos'}
+                <input
+                  id="ready-photo"
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp,image/*"
+                  className="sr-only"
+                  onChange={(e) => {
+                    choosePhotos(Array.from(e.target.files ?? []))
+                    e.target.value = ''
+                  }}
+                />
+              </label>
             )}
           </div>
-          <p className="mt-1 text-xs text-muted">The customer sees it on their order page and in the chat{phone ? ', and the WhatsApp message links to it' : ''}.</p>
+          <p className="mt-1 text-xs text-muted">
+            {uploading ? 'Uploading… ' : ''}The customer sees them on their order page and in the chat{phone ? ', and the WhatsApp message links to them' : ''}.
+          </p>
         </div>
         <section className="rounded-xl border border-line text-sm">
           <div className="flex justify-between border-b border-line px-4 py-2">
@@ -261,7 +285,7 @@ function ReadyDialog({ order, open, onClose }: { order: Order; open: boolean; on
 
 function ShipDialog({ order, open, onClose }: { order: Order; open: boolean; onClose: () => void }) {
   const { state, dispatch } = useStore()
-  const [courier, setCourier] = useState(order.fulfilment.courier ?? COURIERS[0])
+  const [courier, setCourier] = useState(order.fulfilment.courier ?? order.fulfilment.busService ?? '')
   const [tracking, setTracking] = useState('')
   const hand = order.fulfilment.method === 'HAND_DELIVERY'
   const charges = earnsServiceFee(order, state.settings) && state.settings.serviceFee > 0
@@ -280,7 +304,7 @@ function ShipDialog({ order, open, onClose }: { order: Order; open: boolean; onC
           <Button
             variant="primary"
             onClick={async () => {
-              const r = await dispatch({ type: 'SET_STATUS', orderId: order.id, status: 'SHIPPED', courier: hand ? undefined : courier, trackingNumber: hand ? undefined : tracking })
+              const r = await dispatch({ type: 'SET_STATUS', orderId: order.id, status: 'SHIPPED', courier: hand ? undefined : courier.trim() || undefined, trackingNumber: hand ? undefined : tracking })
               if (r.ok) onClose()
             }}
           >
@@ -292,20 +316,32 @@ function ShipDialog({ order, open, onClose }: { order: Order; open: boolean; onC
       <div className="space-y-4">
         {hand ? (
           <p className="text-sm text-ink-2">
-            Delivery within Nairobi to <strong>{order.fulfilment.address}</strong>.
+            {order.fulfilment.option === 'PICKUP_MTAANI' ? (
+              <>
+                Send it with Pickup Mtaani to the agent: <strong>{order.fulfilment.address}</strong>.
+              </>
+            ) : (
+              <>
+                Rider delivery within Nairobi to <strong>{order.fulfilment.address}</strong>.
+              </>
+            )}
           </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Courier">
-              <select className={inputClass} value={courier} onChange={(e) => setCourier(e.target.value)}>
+            <Field label={order.fulfilment.method === 'SHIPPING' ? 'Sent with' : 'Courier'} hint={order.fulfilment.busService ? `The customer asked for ${order.fulfilment.busService}.` : undefined}>
+              <input id="ship-courier" list="ship-couriers" className={inputClass} value={courier} onChange={(e) => setCourier(e.target.value)} placeholder="e.g. Easy Coach" />
+              <datalist id="ship-couriers">
                 {COURIERS.map((c) => (
-                  <option key={c}>{c}</option>
+                  <option key={c} value={c} />
                 ))}
-              </select>
+              </datalist>
             </Field>
-            <Field label="Tracking number" hint="Optional, sent to the customer">
-              <input className={inputClass} value={tracking} onChange={(e) => setTracking(e.target.value)} placeholder="e.g. G4S-482913" />
+            <Field label="Parcel / tracking number" hint="Optional, sent to the customer">
+              <input className={inputClass} value={tracking} onChange={(e) => setTracking(e.target.value)} placeholder="e.g. EC-482913" />
             </Field>
+            <p className="text-sm text-ink-2 sm:col-span-2">
+              To: <strong>{order.fulfilment.address}</strong>
+            </p>
           </div>
         )}
         <Notice tone="warn">
@@ -518,7 +554,7 @@ export function OrderDrawer() {
             </div>
           ))}
           <div className="flex justify-between border-b border-line px-4 py-2.5 text-sm text-ink-2">
-            <span>Delivery · {DELIVERY_LABEL[order.fulfilment.method]}</span>
+            <span>Delivery · {deliveryLabel(order.fulfilment)}</span>
             <span className="tabular">{feeSet ? formatKES(order.fulfilment.deliveryFee) : 'Set when ready'}</span>
           </div>
           <div className="flex justify-between border-b border-line px-4 py-2.5 text-sm font-semibold">
@@ -539,10 +575,10 @@ export function OrderDrawer() {
           </div>
         </section>
 
-        {order.readyPhotoUrl && (
+        {readyPhotos(order).length > 0 && (
           <div>
-            <div className="eyebrow mb-1">Ready photo</div>
-            <img src={order.readyPhotoUrl} alt={`${order.number} finished`} className="max-h-72 rounded-xl border border-line object-cover" />
+            <div className="eyebrow mb-1">Ready photos</div>
+            <PhotoGrid urls={readyPhotos(order)} alt={`${order.number} finished`} className="max-w-sm overflow-hidden rounded-xl border border-line" imgClassName="max-h-72" />
           </div>
         )}
 
@@ -572,10 +608,9 @@ export function OrderDrawer() {
             <dd className="flex items-start gap-1">
               <MapPin size={14} className="mt-0.5 shrink-0 text-muted" aria-hidden /> {order.fulfilment.address}
             </dd>
-            {order.fulfilment.trackingNumber && (
-              <dd className="text-muted">
-                {order.fulfilment.courier} · {order.fulfilment.trackingNumber}
-              </dd>
+            <dd className="text-muted">{deliveryLabel(order.fulfilment)}</dd>
+            {(order.fulfilment.courier || order.fulfilment.trackingNumber) && (
+              <dd className="text-muted">{[order.fulfilment.courier, order.fulfilment.trackingNumber].filter(Boolean).join(' · ')}</dd>
             )}
           </div>
           <div>
@@ -657,7 +692,7 @@ export function OrderDrawer() {
 
 /** Turns a live chat (or a phone call) into an official order. */
 export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; onClose: () => void; thread?: Thread }) {
-  const { state, dispatch, openOrder } = useStore()
+  const { state, dispatch, openOrder, toast } = useStore()
   const customer = thread ? state.customers.find((c) => c.id === thread.customerId) : undefined
   const lastCustomerText = thread?.messages.filter((m) => m.from === 'CUSTOMER').at(-1)?.text ?? ''
 
@@ -666,8 +701,8 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
   const [phone, setPhone] = useState(customer?.phone ?? '')
   const [items, setItems] = useState([{ productId: forSale(state.products)[0].id, qty: 1 }])
   const [customisation, setCustomisation] = useState('')
-  const [method, setMethod] = useState<FulfilmentMethod>('HAND_DELIVERY')
-  const [address, setAddress] = useState('')
+  const [delivery, setDelivery] = useState<DeliveryChoice>({ ...NO_DELIVERY, address: customer?.address ?? '' })
+  const [showErrors, setShowErrors] = useState(false)
   const [payKind, setPayKind] = useState<'SEND_LINK' | 'PAID' | 'UNPAID'>('SEND_LINK')
   const [payMethod, setPayMethod] = useState<PaymentMethod>('MPESA')
   const [reference, setReference] = useState('')
@@ -676,6 +711,11 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
   const deposit = Math.ceil(subtotal / 2)
 
   const submit = async () => {
+    const problem = deliveryProblem(delivery)
+    if (problem || !delivery.method) {
+      setShowErrors(true)
+      return toast(problem, 'error')
+    }
     const draft: OrderDraft = {
       customerId: customer?.id,
       customerName: name,
@@ -684,8 +724,10 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
       threadId: thread?.id,
       items,
       customisation,
-      method,
-      address,
+      method: delivery.method,
+      deliveryOption: delivery.method === 'HAND_DELIVERY' ? (delivery.option ?? undefined) : undefined,
+      busService: delivery.method === 'SHIPPING' ? delivery.busService : undefined,
+      address: delivery.address,
       payment: payKind === 'PAID' ? { kind: 'PAID', method: payMethod, reference } : { kind: payKind },
     }
     const r = await dispatch({ type: 'CREATE_ORDER', draft })
@@ -790,13 +832,8 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
 
         <fieldset className="space-y-3">
           <legend className="eyebrow mb-2">Delivery</legend>
-          <div role="radiogroup" aria-label="Delivery" className="grid gap-2 sm:grid-cols-2">
-            <Choice checked={method === 'HAND_DELIVERY'} onSelect={() => setMethod('HAND_DELIVERY')} title="Within Nairobi" detail="Fee set when it’s ready" />
-            <Choice checked={method === 'SHIPPING'} onSelect={() => setMethod('SHIPPING')} title="Outside Nairobi" detail="Fee set when it’s ready" />
-          </div>
-          <Field label="Delivery address">
-            <input className={inputClass} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Area, town" />
-          </Field>
+          <DeliveryPicker value={delivery} onChange={setDelivery} showErrors={showErrors} idPrefix="new-order" />
+          <p className="text-xs text-muted">The delivery fee is set when the order is ready.</p>
         </fieldset>
 
         <fieldset className="space-y-3">

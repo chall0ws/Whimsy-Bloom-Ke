@@ -22,7 +22,7 @@ export async function resizePhoto(file: File, maxSide: number, quality: number):
 export async function uploadOrderPhoto(orderId: string, file: File): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   if (!file.type.startsWith('image/')) return { ok: false, error: 'Please choose a photo.' }
   try {
-    if (!LIVE) return { ok: true, url: await resizePhoto(file, 900, 0.72) }
+    if (!LIVE) return { ok: true, url: await resizePhoto(file, 800, 0.7) }
     const image = await resizePhoto(file, 1600, 0.82)
     return await api<{ ok: true; url: string } | { ok: false; error: string }>('order-photo', { orderId, image })
   } catch {

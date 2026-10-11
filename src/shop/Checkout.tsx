@@ -4,12 +4,12 @@ import { AuthPanel } from '../auth/AuthPanel'
 import { useAuth } from '../auth/AuthProvider'
 import { GoogleButton } from '../auth/GoogleButton'
 import { BloomMark, HeartDivider, Script } from '../components/Logo'
+import { deliveryProblem, DeliveryPicker, NO_DELIVERY, type DeliveryChoice } from '../components/DeliveryPicker'
 import { Button, cx, Field, inputClass } from '../components/ui'
 import { LIVE } from '../config'
 import type { OrderDraft } from '../domain/actions'
 import { formatKES } from '../domain/format'
-import { amountDue, DELIVERY_LABEL, orderSummary, orderTotal, productName } from '../domain/orders'
-import type { FulfilmentMethod } from '../domain/types'
+import { amountDue, deliveryLabel, orderSummary, orderTotal, productName } from '../domain/orders'
 import { navigate } from '../router'
 import { useStore } from '../state/store'
 import { placedHere, rememberOrder, useCart } from './cart'
@@ -115,9 +115,9 @@ export function Checkout() {
   const [name, setName] = useState(customer?.name ?? account?.name ?? '')
   const [phone, setPhone] = useState(customer?.phone ?? '')
   const [email, setEmail] = useState('')
-  // No default: the customer must say whether it's within or outside Nairobi.
-  const [method, setMethod] = useState<FulfilmentMethod | null>(null)
-  const [address, setAddress] = useState(customer?.address ?? '')
+  // No default: the customer must say where it's going and how.
+  const [delivery, setDelivery] = useState<DeliveryChoice>({ ...NO_DELIVERY, address: customer?.address ?? '' })
+  const { method, address } = delivery
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   /** Demo only: the pretend 'check your phone' screen. */
@@ -130,7 +130,7 @@ export function Checkout() {
     if (!account) return
     setName((n) => n || customer?.name || account.name)
     setPhone((p) => p || customer?.phone || '')
-    setAddress((a) => a || customer?.address || '')
+    setDelivery((d) => (d.address ? d : { ...d, address: customer?.address || '' }))
   }, [account, customer])
 
   const subtotal = lines.reduce((s, l) => s + l.qty * (state.products.find((p) => p.id === l.productId)?.price ?? 0), 0)
@@ -142,8 +142,8 @@ export function Checkout() {
     if (!name.trim()) return 'Please add your name.'
     if (phone.replace(/\D/g, '').length < 9) return 'Please add a phone number for M-Pesa and delivery.'
     if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) return 'That email address doesn’t look right.'
-    if (!method) return 'Please choose Within Nairobi or Outside Nairobi.'
-    if (!address.trim()) return 'Please add where we should deliver.'
+    const problem = deliveryProblem(delivery)
+    if (problem) return problem
     return ''
   }
 
@@ -163,6 +163,8 @@ export function Checkout() {
         items: lines.map((l) => ({ productId: l.productId, qty: l.qty })),
         customisation: wishes.join('; '),
         method,
+        deliveryOption: method === 'HAND_DELIVERY' ? (delivery.option ?? undefined) : undefined,
+        busService: method === 'SHIPPING' ? delivery.busService : undefined,
         address,
         payment: { kind: 'UNPAID' },
       }
@@ -274,35 +276,8 @@ export function Checkout() {
 
         <section className="space-y-4 rounded-3xl border border-line bg-surface p-5 shadow-card">
           <h2 className="eyebrow">2 · Delivery</h2>
-          <div role="radiogroup" aria-label="Where should we deliver?" aria-required="true" className="grid grid-cols-2 gap-2">
-            {(
-              [
-                ['HAND_DELIVERY', 'Within Nairobi'],
-                ['SHIPPING', 'Outside Nairobi'],
-              ] as const
-            ).map(([value, title]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={method === value}
-                onClick={() => setMethod(value)}
-                className={cx(
-                  'flex items-center gap-2.5 rounded-2xl border p-3 text-left',
-                  method === value ? 'border-green bg-green-wash' : error && !method ? 'border-red-ink/60' : 'border-line-strong hover:bg-surface-2',
-                )}
-              >
-                <span className={cx('flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2', method === value ? 'border-green' : 'border-line-strong')} aria-hidden>
-                  {method === value && <span className="h-2 w-2 rounded-full bg-green" />}
-                </span>
-                <span className="text-sm font-semibold">{title}</span>
-              </button>
-            ))}
-          </div>
+          <DeliveryPicker value={delivery} onChange={setDelivery} showErrors={Boolean(error)} idPrefix="checkout" />
           <p className="text-xs text-muted">We confirm the delivery fee when your order is ready, and add it to the final payment.</p>
-          <Field label="Deliver to">
-            <input id="checkout-address" className={inputClass} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Estate / building, area, town" autoComplete="street-address" />
-          </Field>
           <Field label="Anything else? (optional)" hint="Delivery date, a card message for the whole order…">
             <textarea id="checkout-note" className={inputClass} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
@@ -425,7 +400,7 @@ export function Thanks({ orderId }: { orderId: string }) {
         <OrderTracker order={order} />
         <ReadyPhoto order={order} />
         <p className="text-sm text-ink-2">
-          {DELIVERY_LABEL[order.fulfilment.method]} · 
+          {deliveryLabel(order.fulfilment)} · 
           {order.fulfilment.address}
         </p>
         <PaymentSummary order={order} />

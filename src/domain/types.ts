@@ -27,8 +27,10 @@ export type OrderStatus =
   | 'CANCELLED'
   | 'REFUNDED'
 
-/** Where it's going: HAND_DELIVERY is within Nairobi, SHIPPING is outside Nairobi (by courier). */
-export type FulfilmentMethod = 'SHIPPING' | 'HAND_DELIVERY'
+/** Where it's going: HAND_DELIVERY is within Nairobi, SHIPPING is outside Nairobi (by bus), INTERNATIONAL is outside Kenya. */
+export type FulfilmentMethod = 'SHIPPING' | 'HAND_DELIVERY' | 'INTERNATIONAL'
+/** How an order within Nairobi gets there. */
+export type DeliveryOption = 'PICKUP_MTAANI' | 'RIDER'
 /** UNPAID → DEPOSIT_PAID (50%) → PAID (balance and delivery too). */
 export type PaymentStatus = 'UNPAID' | 'DEPOSIT_PAID' | 'PAID' | 'REFUNDED'
 export type PaymentMethod = 'MPESA' | 'CARD'
@@ -87,6 +89,11 @@ export interface StatusEvent {
 
 export interface Fulfilment {
   method: FulfilmentMethod
+  /** Within Nairobi: Pickup Mtaani or a rider (older orders don't say). */
+  option?: DeliveryOption
+  /** Outside Nairobi: the bus company the customer asked for, e.g. "Easy Coach". */
+  busService?: string
+  /** Rider: the delivery address. Pickup Mtaani: the agent. Bus: town and stage. Abroad: full address. */
   address: string
   /** Set when the order is marked ready (0 until then). */
   deliveryFee: number
@@ -119,7 +126,9 @@ export interface Order {
   status: OrderStatus
   createdAt: string
   readyAt?: string
-  /** Photo of the finished bouquet, taken when it was marked ready. */
+  /** Photos of the finished bouquet, taken when it was marked ready. */
+  readyPhotoUrls?: string[]
+  /** Older orders: a single photo. Read both with readyPhotos(). */
   readyPhotoUrl?: string
   shippedAt?: string
   history: StatusEvent[]
@@ -156,7 +165,9 @@ export interface Message {
   /** A payment-link message renders as a "Pay with M-Pesa" card in the customer's chat. */
   kind?: 'PAYMENT_LINK'
   orderId?: string
-  /** A photo shown with the message (e.g. the finished bouquet). */
+  /** Photos shown with the message (e.g. the finished bouquet). */
+  imageUrls?: string[]
+  /** Older messages: a single photo. Read both with messageImages(). */
   imageUrl?: string
 }
 

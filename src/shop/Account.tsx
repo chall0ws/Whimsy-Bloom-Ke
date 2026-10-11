@@ -6,7 +6,7 @@ import { ChatWidget, customerUnread } from '../components/chat/ChatWidget'
 import { BloomMark, HeartDivider, Logo, Script, Sparkles } from '../components/Logo'
 import { Button, cx, Field, inputClass } from '../components/ui'
 import { formatDate, formatKES } from '../domain/format'
-import { amountDue, DELIVERY_LABEL, orderSummary, orderTotal } from '../domain/orders'
+import { amountDue, deliveryLabel, orderSummary, orderTotal } from '../domain/orders'
 import type { Customer, Order } from '../domain/types'
 import { navigate, type AccountTab } from '../router'
 import { useStore } from '../state/store'
@@ -235,7 +235,7 @@ function OrderCard({ order, onAsk, compact }: { order: Order; onAsk: (o: Order) 
             <PaymentSummary order={order} />
           </div>
           <p className="mt-2 text-sm text-ink-2">
-            {DELIVERY_LABEL[order.fulfilment.method]} · {order.fulfilment.address}
+            {deliveryLabel(order.fulfilment)} · {order.fulfilment.address}
             {order.fulfilment.trackingNumber && (
               <>
                 {' '}

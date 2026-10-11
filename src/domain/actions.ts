@@ -1,12 +1,14 @@
 import { feeSummary } from './fees'
 import { formatKES } from './format'
-import { amountDue, amountPaid, canTransition, depositFor, earnsServiceFee, itemsSubtotal, orderTotal, paymentRecords, paymentStage, refundAmountFor, STATUS_LABEL } from './orders'
+import { amountDue, amountPaid, canTransition, depositFor, earnsServiceFee, itemsSubtotal, MAX_READY_PHOTOS, orderTotal, paymentRecords, paymentStage, readyPhotos, refundAmountFor, STATUS_LABEL } from './orders'
 import type {
   AppState,
   Channel,
   ChatStatus,
   Customer,
+  DeliveryOption,
   Role,
+  Fulfilment,
   FulfilmentMethod,
   MaterialMovement,
   Order,
@@ -29,8 +31,12 @@ export interface OrderDraft {
   threadId?: string
   items: { productId: string; qty: number }[]
   customisation: string
-  /** HAND_DELIVERY = within Nairobi, SHIPPING = outside Nairobi. The fee is set when the order is ready. */
+  /** HAND_DELIVERY = within Nairobi, SHIPPING = outside Nairobi, INTERNATIONAL = outside Kenya. The fee is set when the order is ready. */
   method: FulfilmentMethod
+  /** Within Nairobi: Pickup Mtaani or a rider. */
+  deliveryOption?: DeliveryOption
+  /** Outside Nairobi: which bus company to send it with. */
+  busService?: string
   address: string
   /** SEND_LINK sends the deposit link; PAID records a deposit already received (cash or M-Pesa to her number). */
   payment: { kind: 'SEND_LINK' } | { kind: 'UNPAID' } | { kind: 'PAID'; method: PaymentMethod; reference: string }
@@ -44,7 +50,7 @@ export type Action =
   | { type: 'CONFIRM_PAYMENT'; orderId: string; method: PaymentMethod; reference: string }
   /** The bouquet is made: set the delivery fee and ask for the balance (remaining 50% + delivery). */
   /** photoUrl is the order's photo from now on: leaving it out removes one added before. */
-  | { type: 'ORDER_READY'; orderId: string; deliveryFee: number; photoUrl?: string }
+  | { type: 'ORDER_READY'; orderId: string; deliveryFee: number; photoUrls?: string[]; /** Older dashboards: one photo. */ photoUrl?: string }
   | { type: 'CREATE_ORDER'; draft: OrderDraft }
   | { type: 'SET_THREAD_READ'; threadId: string; read: boolean }
   | { type: 'SEND_MESSAGE'; threadId: string; text: string }
@@ -203,7 +209,7 @@ function run(tx: Tx, action: Action): string | undefined {
     case 'CONFIRM_PAYMENT':
       return confirmPayment(tx, action.orderId, action.method, action.reference)
     case 'ORDER_READY':
-      return orderReady(tx, action.orderId, action.deliveryFee, action.photoUrl)
+      return orderReady(tx, action.orderId, action.deliveryFee, action.photoUrls ?? (action.photoUrl ? [action.photoUrl] : []))
     case 'CREATE_ORDER':
       return createOrder(tx, action.draft)
     case 'SET_THREAD_READ': {
@@ -534,9 +540,11 @@ function onShipped(tx: Tx, order: Order) {
 
   const { fulfilment } = order
   const text =
-    fulfilment.method === 'HAND_DELIVERY'
+    fulfilment.method === 'HAND_DELIVERY' && fulfilment.option === 'PICKUP_MTAANI'
+      ? `Your order ${order.number} is on its way to your Pickup Mtaani agent (${fulfilment.address}) 🌸 You'll get a message from Pickup Mtaani when it's ready to collect. Thank you for choosing Whimsy & Bloom!`
+      : fulfilment.method === 'HAND_DELIVERY'
       ? `Your order ${order.number} is ready and out for hand delivery 🌸 Thank you for choosing Whimsy & Bloom!`
-      : `Your order ${order.number} is on its way 🌸 ${fulfilment.courier ? `Courier: ${fulfilment.courier}. ` : ''}${
+      : `Your order ${order.number} is on its way 🌸 ${fulfilment.courier ? `${fulfilment.method === 'SHIPPING' ? 'Sent with' : 'Courier:'} ${fulfilment.courier}. ` : ''}${
           fulfilment.trackingNumber ? `Tracking: ${fulfilment.trackingNumber}. ` : ''
         }Thank you for choosing Whimsy & Bloom!`
   if (order.threadId) {
@@ -620,27 +628,30 @@ function confirmPayment(tx: Tx, orderId: string, method: PaymentMethod, referenc
  * price plus delivery. The customer sees "Pay balance" in their account and chat; the dashboard
  * also offers a WhatsApp message.
  */
-function orderReady(tx: Tx, orderId: string, deliveryFee: number, photoUrl?: string) {
+function orderReady(tx: Tx, orderId: string, deliveryFee: number, photoUrls: string[]) {
   const order = tx.order(orderId)
   if (!order) return 'Order not found.'
   if (!Number.isInteger(deliveryFee) || deliveryFee < 0) return 'Enter the delivery fee as a whole KES amount (0 if free).'
-  // A stored photo (live) or a small inline one (demo).
-  if (photoUrl && !/^https:\/\/\S+$/.test(photoUrl) && !/^data:image\/(jpeg|png|webp);base64,/.test(photoUrl)) return 'That photo couldn’t be used. Please add it again.'
-  if (photoUrl && photoUrl.length > 400_000) return 'That photo is too large.'
+  if (!Array.isArray(photoUrls) || photoUrls.length > MAX_READY_PHOTOS) return `Add up to ${MAX_READY_PHOTOS} photos.`
+  for (const url of photoUrls) {
+    // A stored photo (live) or a small inline one (demo).
+    if (typeof url !== 'string' || (!/^https:\/\/\S+$/.test(url) && !/^data:image\/(jpeg|png|webp);base64,/.test(url))) return 'A photo couldn’t be used. Please add it again.'
+    if (url.length > 400_000) return 'That photo is too large.'
+  }
   const refix = order.status === 'READY' && amountDue(order) > 0
   if (!['PENDING', 'PROCESSING'].includes(order.status) && !refix) {
     if (order.status === 'PENDING_PAYMENT') return 'Waiting for the deposit.'
     return `${order.number} is ${STATUS_LABEL[order.status].toLowerCase()}.`
   }
   // Fix what's been paid before the total changes (older orders worked it out from the total).
-  const { readyPhotoUrl: _previous, ...unchanged } = order
+  const { readyPhotoUrl: _previous, readyPhotoUrls: _previousList, ...unchanged } = order
   let next: Order = {
     ...unchanged,
     status: 'READY',
     readyAt: tx.at,
     fulfilment: { ...order.fulfilment, deliveryFee },
     payment: { ...order.payment, records: paymentRecords(order) },
-    ...(photoUrl ? { readyPhotoUrl: photoUrl } : {}),
+    ...(photoUrls.length ? { readyPhotoUrls: photoUrls } : {}),
     history: refix ? order.history : [...order.history, { status: 'READY', at: tx.at, by: tx.actor, note: `Ready · delivery ${formatKES(deliveryFee)}` }],
   }
   if (!order.materialsDeducted) {
@@ -658,10 +669,34 @@ function orderReady(tx: Tx, orderId: string, deliveryFee: number, photoUrl?: str
     balance > 0
       ? `Your order ${order.number} is ready 🌸 Balance to pay: ${formatKES(balance)} (${formatKES(rest)} remaining + ${formatKES(deliveryFee)} delivery). Tap below to pay, and we’ll send it your way.`
       : `Your order ${order.number} is ready and fully paid 🌸 We’ll send it your way shortly.`
-  // The photo goes to the chat once, not again when only the delivery fee is fixed.
-  const newPhoto = photoUrl && photoUrl !== order.readyPhotoUrl ? photoUrl : undefined
-  tx.postToThread(order.threadId, 'SHOP', text, { ...(balance > 0 ? { kind: 'PAYMENT_LINK' as const, orderId: order.id } : {}), ...(newPhoto ? { imageUrl: newPhoto } : {}) })
+  // Each photo goes to the chat once, not again when only the delivery fee is fixed.
+  const before = readyPhotos(order)
+  const newPhotos = photoUrls.filter((url) => !before.includes(url))
+  tx.postToThread(order.threadId, 'SHOP', text, { ...(balance > 0 ? { kind: 'PAYMENT_LINK' as const, orderId: order.id } : {}), ...(newPhotos.length ? { imageUrls: newPhotos } : {}) })
   tx.notices.push(balance > 0 ? `${order.number} is ready. Balance due: ${formatKES(balance)}.` : `${order.number} is ready and fully paid.`)
+}
+
+/** The delivery details from an order form, or what's missing. The fee is set when the order is ready. */
+function deliveryFor(draft: OrderDraft): Fulfilment | string {
+  const address = (draft.address ?? '').trim().slice(0, 300)
+  switch (draft.method) {
+    case 'HAND_DELIVERY': {
+      if (draft.deliveryOption !== 'PICKUP_MTAANI' && draft.deliveryOption !== 'RIDER') return 'Choose Pickup Mtaani or Rider.'
+      if (!address) return draft.deliveryOption === 'PICKUP_MTAANI' ? 'Add the Pickup Mtaani agent.' : 'Add the delivery address.'
+      return { method: 'HAND_DELIVERY', option: draft.deliveryOption, address, deliveryFee: 0 }
+    }
+    case 'SHIPPING': {
+      const busService = (draft.busService ?? '').trim().slice(0, 60)
+      if (!busService) return 'Add the bus service to send it with.'
+      if (!address) return 'Add the town and stage to send it to.'
+      return { method: 'SHIPPING', busService, address, deliveryFee: 0 }
+    }
+    case 'INTERNATIONAL':
+      if (!address) return 'Add the full delivery address, including the country.'
+      return { method: 'INTERNATIONAL', address, deliveryFee: 0 }
+    default:
+      return 'Choose where the order is going.'
+  }
 }
 
 function createOrder(tx: Tx, draft: OrderDraft) {
@@ -674,7 +709,8 @@ function createOrder(tx: Tx, draft: OrderDraft) {
     if (!product) return 'Unknown product.'
     if (product.hidden) return `${product.name} is no longer available.`
   }
-  if (!draft.address.trim()) return 'Add the delivery address.'
+  const delivery = deliveryFor(draft)
+  if (typeof delivery === 'string') return delivery
   if (draft.payment.kind === 'PAID' && !draft.payment.reference.trim()) return 'Add the payment reference.'
 
   const actor = tx.actor
@@ -694,7 +730,7 @@ function createOrder(tx: Tx, draft: OrderDraft) {
     })),
     customisation: draft.customisation.trim(),
     // The delivery fee is set when the order is ready.
-    fulfilment: { method: draft.method, address: draft.address.trim(), deliveryFee: 0 },
+    fulfilment: delivery,
     payment: { status: 'UNPAID', records: [] },
     status: 'PENDING_PAYMENT',
     createdAt: tx.at,
