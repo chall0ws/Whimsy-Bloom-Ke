@@ -37,7 +37,9 @@ function Page() {
   const admin = isAdminRoute(route)
 
   // The shop always wears the brand look; the dashboard follows the team member's choice.
-  useEffect(() => applyTheme(admin ? readTheme() : 'light'), [admin])
+  useEffect(() => {
+    applyTheme(admin ? readTheme() : 'light')
+  }, [admin])
 
   if (!isAdminRoute(route)) {
     // The shop is the front door: open to everyone, no sign-in needed to browse or buy.
