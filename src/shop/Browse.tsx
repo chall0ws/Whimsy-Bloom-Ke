@@ -9,6 +9,7 @@ import { navigate } from '../router'
 import { useStore } from '../state/store'
 import { useCart } from './cart'
 import { ProductArt } from './ProductArt'
+import { forSale } from '../domain/catalog'
 
 const FEATURES = [
   { icon: Flower2, title: 'Handmade flowers', detail: 'Fuzzy wire flowers & more' },
@@ -21,9 +22,11 @@ export function Home() {
   const { state } = useStore()
   // Live, visitors can't see other people's orders, so the server sends the best sellers.
   const favourites = (state.popularProductIds ?? productPerformance(state).map((p) => p.productId))
-    .map((id) => state.products.find((x) => x.id === id))
+    .map((id) => forSale(state.products).find((x) => x.id === id))
     .filter((p) => p !== undefined)
     .slice(0, 3)
+  // The bouquet in the arch at the top: the first one in the catalogue.
+  const hero = forSale(state.products)[0]
 
   return (
     <div className="space-y-14">
@@ -46,12 +49,14 @@ export function Home() {
           </div>
           <p className="mt-4 text-xs text-muted">No account needed to browse. Create one at checkout if you’d like to track your order.</p>
         </div>
-        <a href="#/shop/p-pink-lily" className="relative mx-auto block w-full max-w-sm">
-          <ProductArt productId="p-pink-lily" label="Bespoke Pink Lily bouquet" className="aspect-[4/5] rounded-b-[32px] rounded-t-[999px] border border-line-strong shadow-card" />
-          <span className="absolute bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-surface/90 px-4 py-1.5 text-sm font-medium shadow-sm">
-            Bespoke Pink Lily · {formatKES(state.products.find((p) => p.id === 'p-pink-lily')?.price ?? 0)}
-          </span>
-        </a>
+        {hero && (
+          <a href={`#/shop/${hero.id}`} className="relative mx-auto block w-full max-w-sm">
+            <ProductArt productId={hero.id} label={hero.name} className="aspect-[4/5] rounded-b-[32px] rounded-t-[999px] border border-line-strong shadow-card" />
+            <span className="absolute bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-surface/90 px-4 py-1.5 text-sm font-medium shadow-sm">
+              {hero.name} · {formatKES(hero.price)}
+            </span>
+          </a>
+        )}
       </section>
 
       <ul className="grid grid-cols-2 gap-y-6 rounded-3xl border border-dashed border-line-strong bg-surface/60 px-4 py-6 text-center sm:grid-cols-4">
@@ -148,7 +153,7 @@ export function Catalog() {
         <p className="mt-3 text-sm text-ink-2">Every bouquet is handmade to order. Add your colours and a card message on the next page.</p>
       </div>
       <div className="anim-stagger grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {state.products.map((p) => (
+        {forSale(state.products).map((p) => (
           <ProductCard key={p.id} product={p} />
         ))}
       </div>

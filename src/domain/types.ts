@@ -35,6 +35,10 @@ export interface Product {
   name: string
   price: number
   blurb: string
+  /** Photo under public/, e.g. "products/rose-blush.jpg". Without one, the shop shows a drawing. */
+  image?: string
+  /** No longer sold; kept so past orders still show its name. */
+  hidden?: boolean
 }
 
 export type MaterialUnit = 'roll' | 'sheet' | 'm' | 'pcs' | 'ml'

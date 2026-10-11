@@ -48,7 +48,7 @@ function customerOf(ctx: Ctx, state: AppState): Customer | undefined {
 /** Loads the shop, creating the starting catalogue the very first time. */
 async function loadOrCreate(repo: Repo): Promise<{ state: AppState; version: number }> {
   const loaded = await repo.load()
-  if (loaded.version > 0 || loaded.state.products.length > 0) return loaded
+  if (loaded.version > 0) return loaded
   const version = await repo.save(loaded.state, createEmptyState(), loaded.version)
   if (version === null) return repo.load()
   return { state: createEmptyState(), version }

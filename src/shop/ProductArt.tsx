@@ -1,4 +1,5 @@
 import { cx } from '../components/ui'
+import { PRODUCTS } from '../domain/catalog'
 
 /*
  * Illustrations of each bouquet in the poster's soft, hand-drawn style.
@@ -226,6 +227,14 @@ function Bouquet({ productId }: { productId: string }) {
 }
 
 export function ProductArt({ productId, className, label }: { productId: string; className?: string; label: string }) {
+  const photo = PRODUCTS.find((p) => p.id === productId)?.image
+  if (photo) {
+    return (
+      <div className={cx('relative overflow-hidden bg-surface-2', className)}>
+        <img src={photo} alt={label} loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
+      </div>
+    )
+  }
   return (
     <div className={cx('relative overflow-hidden', className)} style={{ background: BACKGROUNDS[productId] ?? BACKGROUNDS['p-peony'] }} role="img" aria-label={label}>
       <svg viewBox="0 0 200 200" className="absolute inset-0 h-full w-full" aria-hidden>

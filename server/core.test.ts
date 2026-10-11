@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import type { Action, OrderDraft } from '../src/domain/actions'
 import { createSeedState } from '../src/domain/seed'
+import { PRODUCTS } from '../src/domain/catalog'
 import { confirmPaystack, handleWebhook, readState, runAction, startPayment, type Caller, type Ctx, type PaystackApi, type PaystackTransaction } from './core'
 import { diff, fromRecords, toMeta, toRecords } from './records'
 import { MemoryRepo } from './repo'
@@ -76,7 +77,7 @@ describe('server rules', () => {
   it('starts a new shop with the catalogue and nothing else', async () => {
     const repo = new MemoryRepo()
     const state = await readState(ctx(repo, null))
-    expect(state.products).toHaveLength(6)
+    expect(state.products).toHaveLength(PRODUCTS.length)
     expect(state.orders).toHaveLength(0)
     expect(repo.version).toBe(1)
   })
@@ -206,5 +207,20 @@ describe('Paystack', () => {
     const signature = createHmac('sha512', 'sk_test_secret').update(body).digest('hex')
     expect((await handleWebhook(repo, paystack, body, signature, 'sk_test_secret')).status).toBe(200)
     expect((await repo.load()).state.orders[0].payment.status).toBe('PAID')
+  })
+})
+
+describe('catalogue', () => {
+  it('always shows the catalogue from the code, keeping retired bouquets hidden for old orders', async () => {
+    const repo = new MemoryRepo()
+    await readState(ctx(repo, null))
+    // A bouquet saved earlier that is no longer in the catalogue.
+    repo.rows.set('product:p-old', { kind: 'product', id: 'p-old', data: { id: 'p-old', name: 'Old Bunch', price: 100, blurb: '' } })
+    const { state } = await repo.load()
+    expect(state.products.map((p) => p.id)).toEqual([...PRODUCTS.map((p) => p.id), 'p-old'])
+    expect(state.products.find((p) => p.id === 'p-old')?.hidden).toBe(true)
+    // Nobody can order it any more.
+    const res = await runAction(ctx(repo, null), { type: 'CUSTOMER_PLACE_ORDER', draft: { ...draft(), items: [{ productId: 'p-old', qty: 1 }] } })
+    expect(res).toMatchObject({ ok: false })
   })
 })

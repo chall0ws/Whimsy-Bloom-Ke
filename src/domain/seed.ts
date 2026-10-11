@@ -17,7 +17,7 @@ import type {
   Thread,
 } from './types'
 
-export const STATE_VERSION = 3
+export const STATE_VERSION = 4
 
 /**
  * The starting point for a real shop: the catalogue and materials, and nothing else.

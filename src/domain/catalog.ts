@@ -14,6 +14,18 @@ export const PRODUCTS: Product[] = [
   { id: 'p-rosebud-box', name: 'Rosebud Box', price: 1800, blurb: 'Nine rosebuds in a keepsake box.' },
 ]
 
+/** Bouquets customers can order now. */
+export const forSale = (products: Product[]) => products.filter((p) => !p.hidden)
+
+/**
+ * The catalogue in this file is the source of truth. Products saved earlier that are no longer
+ * listed stay (hidden) so old orders keep their names.
+ */
+export function withCatalogue(saved: Product[]): Product[] {
+  const listed = new Set(PRODUCTS.map((p) => p.id))
+  return [...PRODUCTS, ...saved.filter((p) => !listed.has(p.id)).map((p) => ({ ...p, hidden: true }))]
+}
+
 export const MATERIALS: Material[] = [
   { id: 'm-crepe-pink', name: 'Crepe paper — pink', unit: 'roll', onHand: 14, reorderLevel: 6 },
   { id: 'm-crepe-green', name: 'Crepe paper — green', unit: 'roll', onHand: 9, reorderLevel: 4 },

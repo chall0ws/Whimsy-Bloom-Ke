@@ -7,6 +7,7 @@ import { buildableUnits, stockLevel, type StockLevel } from '../domain/metrics'
 import { productName } from '../domain/orders'
 import type { Material } from '../domain/types'
 import { userName, useStore } from '../state/store'
+import { forSale } from '../domain/catalog'
 
 const LEVEL_STYLE: Record<StockLevel, string> = {
   OK: 'bg-green-wash text-green-ink',
@@ -99,7 +100,7 @@ export function Inventory() {
 
         <Card title="You can still make" subtitle="With the materials on hand right now">
           <ul className="space-y-2">
-            {state.products.map((p) => {
+            {forSale(state.products).map((p) => {
               const n = buildableUnits(state, p.id)
               return (
                 <li key={p.id} className="flex items-center justify-between gap-2 border-b border-line pb-2 text-sm last:border-0">
@@ -113,7 +114,7 @@ export function Inventory() {
 
         <Card title="Materials per bouquet" className="xl:col-span-2">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {state.products.map((p) => (
+            {forSale(state.products).map((p) => (
               <div key={p.id} className="rounded-xl border border-line p-3">
                 <div className="mb-1.5 text-sm font-semibold">{productName(state, p.id)}</div>
                 <ul className="space-y-0.5 text-xs text-ink-2">
