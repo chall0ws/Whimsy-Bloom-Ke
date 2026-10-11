@@ -143,6 +143,10 @@ class Tx {
     this.at = now.toISOString()
   }
 
+  /**
+   * A new id. Take it before building the new state: `{ ...this.state, x: this.id() }` would copy
+   * the state before the counter moved and lose the increment, giving the next record the same id.
+   */
   id(prefix: string): string {
     const n = this.state.nextId
     this.state = { ...this.state, nextId: n + 1 }
@@ -150,7 +154,8 @@ class Tx {
   }
 
   audit(text: string, by = this.actor) {
-    this.state = { ...this.state, audit: [{ id: this.id('a'), at: this.at, by, text }, ...this.state.audit] }
+    const id = this.id('a')
+    this.state = { ...this.state, audit: [{ id, at: this.at, by, text }, ...this.state.audit] }
   }
 
   order(orderId: string): Order | undefined {
@@ -519,13 +524,8 @@ function onShipped(tx: Tx, order: Order) {
   const { settings } = tx.state
   const alreadyCharged = tx.state.fees.some((f) => f.orderId === order.id)
   if (!alreadyCharged && earnsServiceFee(order, settings) && settings.serviceFee > 0) {
-    tx.state = {
-      ...tx.state,
-      fees: [
-        { id: tx.id('fee'), orderId: order.id, orderNumber: order.number, amount: settings.serviceFee, at: tx.at },
-        ...tx.state.fees,
-      ],
-    }
+    const id = tx.id('fee')
+    tx.state = { ...tx.state, fees: [{ id, orderId: order.id, orderNumber: order.number, amount: settings.serviceFee, at: tx.at }, ...tx.state.fees] }
     tx.notices.push(`Service fee of ${formatKES(settings.serviceFee)} added to the partner balance.`)
   }
 

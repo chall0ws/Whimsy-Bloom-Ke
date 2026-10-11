@@ -245,6 +245,18 @@ describe('Paystack', () => {
   })
 })
 
+describe('ids', () => {
+  it('moves the id counter past ids already stored, so nothing is overwritten', () => {
+    const state = createSeedState(NOW)
+    const rows = toRecords(state)
+    const stale = fromRecords(rows, { ...toMeta(state), nextId: 5 })
+    const highest = Math.max(...rows.map((r) => Number(/-(\d+)$/.exec(r.id)?.[1] ?? 0)))
+    expect(stale.nextId).toBeGreaterThan(highest)
+    // A counter that's already ahead is kept.
+    expect(fromRecords(rows, { ...toMeta(state), nextId: highest + 50 }).nextId).toBe(highest + 50)
+  })
+})
+
 describe('catalogue', () => {
   it('always shows the catalogue from the code, keeping retired bouquets hidden for old orders', async () => {
     const repo = new MemoryRepo()

@@ -179,6 +179,16 @@ describe('payment', () => {
     expect(state.fees).toHaveLength(1)
   })
 
+  it('gives every new record its own id, even when one action writes several log lines', () => {
+    // No chat thread: shipping writes two log lines and a fee in one go.
+    const created = createPaidOrder(emptyState(), { threadId: undefined, channel: 'MANUAL' })
+    const state = applyAll(created.state, ship(created.orderId))
+    const ids = [...state.audit.map((a) => a.id), ...state.fees.map((f) => f.id), ...state.movements.map((m) => m.id), ...state.orders.map((o) => o.id), ...state.customers.map((c) => c.id)]
+    expect(new Set(ids).size).toBe(ids.length)
+    const highest = Math.max(...ids.map((id) => Number(id.split('-').pop())))
+    expect(state.nextId).toBe(highest + 1)
+  })
+
   it('marks an order ready straight from pending, using its materials', () => {
     const created = createPaidOrder(emptyState())
     const state = apply(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 0 })

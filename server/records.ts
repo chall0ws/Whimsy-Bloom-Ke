@@ -77,8 +77,24 @@ export function fromRecords(rows: RecordRow[], meta: Meta): AppState {
     settings: meta.settings,
     chatStatus: meta.chatStatus,
     nextOrderNumber: meta.nextOrderNumber,
-    nextId: meta.nextId,
+    // Never hand out an id that's already taken, even if the counter fell behind
+    // (an earlier bug lost some increments, so new log lines reused old ids).
+    nextId: Math.max(meta.nextId, highestId(rows) + 1),
   }
+}
+
+/** The largest number used in any id ("o-1042", "a-1043", and messages inside chats). */
+function highestId(rows: RecordRow[]): number {
+  let max = 0
+  const see = (id: unknown) => {
+    const n = Number(/-(\d+)$/.exec(String(id))?.[1])
+    if (n > max) max = n
+  }
+  for (const r of rows) {
+    see(r.id)
+    if (r.kind === 'thread') for (const m of (r.data as { messages?: { id: string }[] }).messages ?? []) see(m.id)
+  }
+  return max
 }
 
 /** Only the rows that actually changed, so concurrent edits to other things don't collide. */
