@@ -165,9 +165,12 @@ describe('Paystack', () => {
     const guest = ctx(repo, null, [placed.guestToken!])
 
     expect(await startPayment(ctx(repo, null), paystack, placed.createdOrderId!, { receiptEmail: 'shop@example.com' })).toMatchObject({ ok: false, status: 404 })
-    const start = await startPayment(guest, paystack, placed.createdOrderId!, { receiptEmail: 'shop@example.com' })
+    const back = 'https://shop.example/?paid_order=' + placed.createdOrderId
+    const start = await startPayment(guest, paystack, placed.createdOrderId!, { receiptEmail: 'shop@example.com', callbackUrl: back })
     if (!start.ok) throw new Error(start.error)
-    expect(paystack.initialized[0]).toMatchObject({ amount: 350000, currency: 'KES', email: 'shop@example.com', channels: ['mobile_money', 'card'] })
+    expect(paystack.initialized[0]).toMatchObject({ amount: 350000, currency: 'KES', email: 'shop@example.com', channels: ['mobile_money', 'card'], callback_url: back })
+    // Cancelling on Paystack's page brings them back to their order too.
+    expect(paystack.initialized[0].metadata.cancel_action).toBe(back)
 
     // Not paid yet: nothing changes.
     expect(await confirmPaystack(repo, paystack, start.reference)).toMatchObject({ ok: true, paid: false })

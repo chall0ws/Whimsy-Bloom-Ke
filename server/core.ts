@@ -261,7 +261,8 @@ export async function startPayment(
     currency: 'KES',
     reference: `${order.number}-${randomBytes(4).toString('hex')}`,
     channels: ['mobile_money', 'card'],
-    metadata: { orderId: order.id, orderNumber: order.number },
+    // cancel_action: where Paystack's page sends someone who cancels (back to their order, unpaid).
+    metadata: { orderId: order.id, orderNumber: order.number, ...(options.callbackUrl ? { cancel_action: options.callbackUrl } : {}) },
     callback_url: options.callbackUrl,
   })
   return { ok: true, accessCode: tx.access_code, reference: tx.reference, authorizationUrl: tx.authorization_url }
