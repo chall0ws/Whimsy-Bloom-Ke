@@ -51,7 +51,9 @@ export function productPerformance(state: AppState, since?: Date): ProductPerfor
       row.revenue += item.qty * item.unitPrice
     }
   }
-  return [...rows.values()].sort((a, b) => b.units - a.units || b.revenue - a.revenue)
+  // Retired bouquets only appear while they still have sales in the period.
+  const retired = new Set(state.products.filter((p) => p.hidden).map((p) => p.id))
+  return [...rows.values()].filter((r) => r.units > 0 || !retired.has(r.productId)).sort((a, b) => b.units - a.units || b.revenue - a.revenue)
 }
 
 export interface WeekBucket {

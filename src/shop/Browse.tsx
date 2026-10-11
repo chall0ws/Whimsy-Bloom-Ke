@@ -112,7 +112,7 @@ export function ProductCard({ product }: { product: Product }) {
   return (
     <article className="group flex flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-card transition duration-300 ease-out hover:-translate-y-1 hover:shadow-lg">
       <a href={`#/shop/${product.id}`} className="block">
-        <ProductArt productId={product.id} label={product.name} className="aspect-square transition-transform duration-500 ease-out group-hover:scale-[1.04]" />
+        <ProductArt productId={product.id} label={product.name} className="aspect-[4/5] transition-transform duration-500 ease-out group-hover:scale-[1.04]" />
       </a>
       <div className="flex flex-1 flex-col gap-1 p-4">
         <div className="flex items-baseline justify-between gap-3">

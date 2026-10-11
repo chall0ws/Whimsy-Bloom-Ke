@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import type { Action, OrderDraft } from '../src/domain/actions'
 import { createSeedState } from '../src/domain/seed'
-import { PRODUCTS } from '../src/domain/catalog'
+import { DEFAULT_SETTINGS, forSale, PRODUCTS } from '../src/domain/catalog'
 import { confirmPaystack, handleWebhook, readState, runAction, startPayment, type Caller, type Ctx, type PaystackApi, type PaystackTransaction } from './core'
 import { diff, fromRecords, toMeta, toRecords } from './records'
 import { MemoryRepo } from './repo'
@@ -16,11 +16,13 @@ function ctx(repo: MemoryRepo, caller: Caller | null, guestTokens: string[] = []
   return { repo, caller, guestTokens, staff, now: () => NOW }
 }
 
+const BOUQUET = forSale(PRODUCTS)[0]
+
 const draft = (over: Partial<OrderDraft> = {}): OrderDraft => ({
   customerName: 'Joy Wairimu',
   phone: '0712 345 678',
   channel: 'WEB_FORM',
-  items: [{ productId: 'p-peony', qty: 1 }],
+  items: [{ productId: BOUQUET.id, qty: 1 }],
   customisation: '',
   method: 'SHIPPING',
   address: 'Thika',
@@ -169,7 +171,7 @@ describe('Paystack', () => {
     const back = 'https://shop.example/?paid_order=' + placed.createdOrderId
     const start = await startPayment(guest, paystack, placed.createdOrderId!, { receiptEmail: 'shop@example.com', callbackUrl: back })
     if (!start.ok) throw new Error(start.error)
-    expect(paystack.initialized[0]).toMatchObject({ amount: 350000, currency: 'KES', email: 'shop@example.com', channels: ['mobile_money', 'card'], callback_url: back })
+    expect(paystack.initialized[0]).toMatchObject({ amount: (BOUQUET.price + DEFAULT_SETTINGS.defaultShippingFee) * 100, currency: 'KES', email: 'shop@example.com', channels: ['mobile_money', 'card'], callback_url: back })
     // Cancelling on Paystack's page brings them back to their order too.
     expect(paystack.initialized[0].metadata.cancel_action).toBe(back)
 
