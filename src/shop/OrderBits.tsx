@@ -45,15 +45,20 @@ export function usePayNow() {
       setBusy(true)
       try {
         if (LIVE) {
-          const message = outcomeMessage(await payOrder(order.id))
+          const outcome = await payOrder(order.id)
+          // On the way to Paystack's page: keep showing "Taking you to Paystack…".
+          if (outcome.status === 'redirecting') return
+          const message = outcomeMessage(outcome)
           if (message) toast(message.text, message.tone)
           await refresh()
         } else {
           await new Promise((resolve) => setTimeout(resolve, 2000))
           await dispatch({ type: 'CUSTOMER_PAY', orderId: order.id, customerId: order.customerId, reference: mpesaReference() })
         }
-      } finally {
         setBusy(false)
+      } catch (error) {
+        setBusy(false)
+        throw error
       }
     },
     [dispatch, toast, refresh],
@@ -62,7 +67,7 @@ export function usePayNow() {
 }
 
 export const payLabel = (amount: number) => (LIVE ? `Pay ${formatKES(amount)} · M-Pesa or card` : `Pay ${formatKES(amount)} with M-Pesa`)
-export const payingLabel = LIVE ? 'Opening the secure payment window…' : 'Check your phone for the M-Pesa prompt…'
+export const payingLabel = LIVE ? 'Taking you to Paystack’s secure page…' : 'Check your phone for the M-Pesa prompt…'
 
 export function PayButton({ order, size = 'sm' }: { order: Order; size?: 'sm' | 'md' }) {
   const { pay, busy } = usePayNow()
