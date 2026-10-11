@@ -79,6 +79,32 @@ To go back to demo mode, delete `VITE_LIVE` (or set it to `false`) and redeploy.
 
 If someone closes the window after paying, nothing is lost: Paystack's webhook marks the order paid on its own.
 
+## 6. WhatsApp alerts to your phone (optional, free)
+
+The shop can message you on WhatsApp when:
+
+- 🛍️ a **new order** comes in (its deposit is paid),
+- 💳 a **payment** arrives (deposits and balances),
+- 💬 a customer **writes in the live chat** (the first message, then again after 10 quiet minutes).
+
+It uses [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/), a free service that sends WhatsApp messages to your own number.
+
+**Each person who wants alerts:**
+
+1. Open callmebot.com/blog/free-api-whatsapp-messages and save the phone number shown there as a contact (e.g. "CallMeBot").
+2. Send it this WhatsApp message exactly: `I allow callmebot to send me messages`
+3. It replies with your **API key** (a number). Keep it private; don't send it to anyone.
+
+**Then, in Vercel** (one variable for everyone):
+
+1. Vercel → your project → **Settings → Environment Variables → Add**.
+2. **Key:** `CALLMEBOT_ALERTS`
+3. **Value:** your number and key joined by a colon, e.g. `254712345678:1234567`. For two people, separate with a comma: `254712345678:1234567, 254798765432:7654321`. Numbers can be written `07…` or `2547…`.
+4. **Environments:** tick **Production** only. Mark it **Sensitive**. **Save**.
+5. **Deployments → ⋯ → Redeploy** on the latest deployment.
+
+To stop the alerts, delete the variable and redeploy. If alerts stop arriving, CallMeBot may be busy; orders, payments and chats still work as normal and are all in the dashboard.
+
 ## Running it on your computer (optional)
 
 Put the same values in `.env.local` (see `.env.example`) and run `npm run dev`. The `/api` routes run inside the dev server. Paystack's webhook can't reach your computer, but the payment window confirms the payment itself, so test payments still go through.
