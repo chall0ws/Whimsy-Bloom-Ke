@@ -11,5 +11,9 @@ export function serverEnv() {
     paystackSecret: pick('PAYSTACK_SECRET_KEY'),
     staffEmails: pick('VITE_STAFF_EMAILS', 'STAFF_EMAILS'),
     receiptEmail: pick('PAYSTACK_RECEIPT_EMAIL') ?? 'orders@example.com',
+    /** WhatsApp alerts to the team: "2547…:apikey, 2547…:apikey" (keys from CallMeBot). */
+    alertRecipients: pick('CALLMEBOT_ALERTS'),
+    /** The shop's address for links in alerts; worked out from the request if not set. */
+    siteUrl: pick('SITE_URL'),
   }
 }

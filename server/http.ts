@@ -3,6 +3,7 @@ import { parseStaffList } from '../src/domain/auth'
 import type { Ctx } from './core'
 import { serverEnv } from './env'
 import { paystackClient } from './paystack'
+import { parseRecipients, withAlerts } from './alerts'
 import { adminClient, callerFromToken, SupabaseRepo } from './supabaseRepo'
 
 export function readBody(req: IncomingMessage, limit = 1_000_000): Promise<string> {
@@ -35,13 +36,20 @@ function bearer(req: IncomingMessage): string | null {
   return header?.startsWith('Bearer ') ? header.slice(7) : null
 }
 
+/** "https://whimsy-bloom-ke.vercel.app", from the address the request came to. */
+function siteFrom(req: IncomingMessage): string {
+  const header = (name: string) => [req.headers[name]].flat()[0]?.split(',')[0].trim()
+  const host = header('x-forwarded-host') ?? header('host') ?? 'localhost'
+  return `${header('x-forwarded-proto') ?? 'https'}://${host}`
+}
+
 /** Everything a request needs: the database, who is calling, and their guest tokens. */
 export async function liveContext(req: IncomingMessage, guestTokens: unknown): Promise<Ctx | { error: string }> {
   const env = serverEnv()
   if (!env.supabaseUrl || !env.serviceKey) return { error: 'The server isn’t connected to Supabase yet (missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY).' }
   const db = adminClient(env.supabaseUrl, env.serviceKey)
   return {
-    repo: new SupabaseRepo(db, env.supabaseUrl, env.serviceKey),
+    repo: withAlerts(new SupabaseRepo(db, env.supabaseUrl, env.serviceKey), parseRecipients(env.alertRecipients), env.siteUrl ?? siteFrom(req)),
     caller: await callerFromToken(db, bearer(req)),
     guestTokens: Array.isArray(guestTokens) ? guestTokens.filter((t): t is string => typeof t === 'string').slice(0, 50) : [],
     staff: parseStaffList(env.staffEmails),
