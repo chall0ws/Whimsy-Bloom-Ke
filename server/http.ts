@@ -61,6 +61,9 @@ export function route(handler: (req: IncomingMessage, res: ServerResponse) => Pr
     } catch (error) {
       console.error(error)
       if (res.headersSent) return
+      // Paystack refused (wrong key, currency or channel not enabled…): say what Paystack said.
+      const paystack = /^Paystack: (.*)/.exec(error instanceof Error ? error.message : '')
+      if (paystack) return send(res, 502, { ok: false, error: `Paystack couldn’t start the payment: ${paystack[1]}` })
       // The usual first-time problem: the SQL in supabase/migrations hasn't been run yet.
       const missingTables = /app_meta|records|apply_changes/.test(String(error)) && /does not exist|schema cache|not find/i.test(String(error))
       send(res, missingTables ? 503 : 500, {
