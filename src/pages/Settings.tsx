@@ -47,7 +47,7 @@ export function Settings() {
                 <span className="block text-xs text-muted">This only decides whether those orders earn the partner fee.</span>
               </span>
             </label>
-            <Field label="Usual delivery fee outside Nairobi (KES)" hint="Suggested when an order going outside Nairobi is marked ready. You set the actual fee each time.">
+            <Field label="Usual delivery fee outside Nairobi (KES)" hint="Suggested when an order going by bus outside Nairobi is marked ready. You set the actual fee each time.">
               <input
                 type="number"
                 min={0}

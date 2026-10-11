@@ -268,9 +268,11 @@ class Gen {
       items: [{ productId, qty, unitPrice: product.price }],
       customisation: this.pick(CUSTOMISATIONS),
       fulfilment: hand
-        ? { method: 'HAND_DELIVERY', address: `${this.pick(NAIROBI)}, Nairobi`, deliveryFee: 0 }
+        ? { method: 'HAND_DELIVERY', option: created % 3 === 0 ? 'PICKUP_MTAANI' : 'RIDER', address: `${this.pick(NAIROBI)}, Nairobi`, deliveryFee: 0 }
         : {
             method: 'SHIPPING',
+            // Picked without using the random sequence, so the rest of the demo stays the same.
+            busService: COURIERS[created % 4],
             address: this.chance(0.5) ? `${this.pick(NAIROBI)}, Nairobi` : this.pick(UPCOUNTRY),
             deliveryFee: DEFAULT_SETTINGS.defaultShippingFee,
             courier: status === 'SHIPPED' ? courier : undefined,
@@ -321,7 +323,7 @@ class Gen {
     )
 
     const achiengOrder = linked(achieng, 175, { productId: 'p-tulip', qty: 2, channel: 'LIVE_CHAT', status: 'PENDING_PAYMENT', hand: true }, 'Card: “Happy anniversary, love A.”')
-    achiengOrder.fulfilment = { method: 'HAND_DELIVERY', address: 'Kilimani, Nairobi', deliveryFee: 0 }
+    achiengOrder.fulfilment = { method: 'HAND_DELIVERY', option: 'RIDER', address: 'Kilimani, Nairobi', deliveryFee: 0 }
     const brianOrder = linked(brian, 250, { productId: 'p-giant-rose', qty: 1, channel: 'LIVE_CHAT', status: 'PENDING', hand: false }, 'Deep red with gold-edged petals.')
     const mercyOrder = linked(mercy, 60 * 25, { productId: 'p-pink-lily', qty: 1, channel: 'LIVE_CHAT', status: 'PROCESSING', hand: true }, 'Blush ribbon.')
     const aminaOrder = linked(amina, 60 * 24 * 4, { productId: 'p-peony', qty: 1, channel: 'LIVE_CHAT' }, 'Card: “For the best teacher.”')

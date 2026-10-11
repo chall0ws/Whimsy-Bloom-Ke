@@ -1,5 +1,4 @@
 import { formatKES } from './format'
-import type { FulfilmentMethod } from './types'
 
 /** A Kenyan phone number in the international form WhatsApp links need ("0712 345 678" → "254712345678"). */
 export function whatsappNumber(phone: string | undefined): string | null {
@@ -21,21 +20,24 @@ export function readyMessage(o: {
   firstName: string
   number: string
   summary: string
-  method: FulfilmentMethod
+  /** How it's being delivered, e.g. "Within Nairobi · Rider". */
+  delivery: string
   remaining: number
   deliveryFee: number
   balance: number
   payUrl: string
-  /** Link to a photo of the finished bouquet. */
-  photoUrl?: string
+  /** Links to photos of the finished bouquet. */
+  photoUrls?: string[]
 }): string {
   const lines = [`Hi ${o.firstName}! 🌸 Your Whimsy & Bloom order ${o.number} (${o.summary}) is ready.`, '']
-  if (o.photoUrl) lines.push(`Here it is: ${o.photoUrl}`, '')
+  const photos = o.photoUrls ?? []
+  if (photos.length === 1) lines.push(`Here it is: ${photos[0]}`, '')
+  if (photos.length > 1) lines.push('Here it is:', ...photos, '')
   if (o.balance > 0) {
     lines.push(
       `Balance to pay: ${formatKES(o.balance)}`,
       `• Remaining 50%: ${formatKES(o.remaining)}`,
-      `• Delivery (${o.method === 'HAND_DELIVERY' ? 'within Nairobi' : 'outside Nairobi'}): ${formatKES(o.deliveryFee)}`,
+      `• Delivery (${o.delivery}): ${formatKES(o.deliveryFee)}`,
       '',
       `Pay with M-Pesa or card here: ${o.payUrl}`,
       '',

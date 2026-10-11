@@ -26,6 +26,8 @@ const draft = (over: Partial<OrderDraft> = {}): OrderDraft => ({
   items: [{ productId: BOUQUET.id, qty: 1 }],
   customisation: '',
   method: 'SHIPPING',
+  busService: 'Easy Coach',
+  deliveryOption: 'RIDER',
   address: 'Thika',
   payment: { kind: 'UNPAID' },
   ...over,

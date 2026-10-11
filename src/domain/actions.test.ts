@@ -4,7 +4,7 @@ import { parseStaffList, staffRoleFor } from './auth'
 import { DEFAULT_SETTINGS, MATERIALS, PRODUCTS, RECIPES, USERS } from './catalog'
 import { feeSummary } from './fees'
 import { netRevenueReport, orderMoney } from './metrics'
-import { amountDue, amountPaid, netRevenue, orderTotal } from './orders'
+import { amountDue, amountPaid, deliveryLabel, earnsServiceFee, netRevenue, orderTotal, readyPhotos } from './orders'
 import { createSeedState } from './seed'
 import type { AppState, Order } from './types'
 
@@ -61,6 +61,8 @@ const draft = (overrides: Partial<OrderDraft> = {}): OrderDraft => ({
   items: [{ productId: 'p-pink-lily', qty: 1 }],
   customisation: 'Bigger size',
   method: 'SHIPPING',
+  busService: 'Easy Coach',
+  deliveryOption: 'RIDER',
   address: 'Lavington, Nairobi',
   payment: { kind: 'PAID', method: 'MPESA', reference: 'sjk7h2l9qx' },
   ...overrides,
@@ -205,23 +207,62 @@ describe('payment', () => {
     expect(amountDue(state.orders[0])).toBe(1750 + 500)
   })
 
-  it('keeps a photo of the finished bouquet and shows it to the customer once', () => {
+  it('keeps photos of the finished bouquet and shows each to the customer once', () => {
     const created = createPaidOrder(emptyState())
-    const bad = applyAction(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrl: 'javascript:alert(1)' }, NOW)
-    expect(bad.ok === false && bad.error).toBe('That photo couldn’t be used. Please add it again.')
+    const bad = applyAction(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrls: ['javascript:alert(1)'] }, NOW)
+    expect(bad.ok === false && bad.error).toBe('A photo couldn’t be used. Please add it again.')
     const huge = `data:image/jpeg;base64,${'A'.repeat(400_000)}`
-    expect(applyAction(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrl: huge }, NOW).ok).toBe(false)
+    expect(applyAction(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrls: [huge] }, NOW).ok).toBe(false)
+    const tooMany = Array.from({ length: 9 }, (_, i) => `https://x.co/${i}.jpg`)
+    expect(applyAction(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrls: tooMany }, NOW).ok).toBe(false)
 
-    const photo = 'https://example.supabase.co/storage/v1/object/public/order-photos/o-1/abc.jpg'
-    let state = apply(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrl: photo })
-    expect(state.orders[0].readyPhotoUrl).toBe(photo)
-    expect(state.threads[0].messages.at(-1)).toMatchObject({ kind: 'PAYMENT_LINK', imageUrl: photo })
-    // Fixing the delivery fee doesn't post the photo again.
-    state = apply(state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 400, photoUrl: photo })
-    expect(state.threads[0].messages.at(-1)!.imageUrl).toBeUndefined()
-    // Removing it in the dialog removes it from the order.
-    state = apply(state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 400 })
-    expect(state.orders[0].readyPhotoUrl).toBeUndefined()
+    const one = 'https://example.supabase.co/storage/v1/object/public/order-photos/o-1/abc.jpg'
+    const two = 'https://example.supabase.co/storage/v1/object/public/order-photos/o-1/def.jpg'
+    let state = apply(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrls: [one] })
+    expect(readyPhotos(state.orders[0])).toEqual([one])
+    expect(state.threads[0].messages.at(-1)).toMatchObject({ kind: 'PAYMENT_LINK', imageUrls: [one] })
+    // Adding a second photo later sends only the new one to the chat.
+    state = apply(state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 400, photoUrls: [one, two] })
+    expect(readyPhotos(state.orders[0])).toEqual([one, two])
+    expect(state.threads[0].messages.at(-1)!.imageUrls).toEqual([two])
+    // Fixing only the delivery fee doesn't post them again.
+    state = apply(state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 450, photoUrls: [one, two] })
+    expect(state.threads[0].messages.at(-1)!.imageUrls).toBeUndefined()
+    // Removing them in the dialog removes them from the order.
+    state = apply(state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 450, photoUrls: [] })
+    expect(readyPhotos(state.orders[0])).toEqual([])
+  })
+
+  it('still reads the single photo from older orders and dashboards', () => {
+    const created = createPaidOrder(emptyState())
+    const photo = 'https://x.co/old.jpg'
+    const state = apply(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300, photoUrl: photo })
+    expect(readyPhotos(state.orders[0])).toEqual([photo])
+    expect(readyPhotos({ ...state.orders[0], readyPhotoUrls: undefined, readyPhotoUrl: photo })).toEqual([photo])
+  })
+
+  it('records how the order travels: Pickup Mtaani or a rider in Nairobi, a bus outside, or abroad', () => {
+    const base = { channel: 'MANUAL' as const, threadId: undefined, deliveryOption: undefined, busService: undefined }
+    const fails = (over: Partial<OrderDraft>) => {
+      const r = applyAction(emptyState(), { type: 'CREATE_ORDER', draft: draft({ ...base, ...over }) }, NOW)
+      return r.ok ? '' : r.error
+    }
+    expect(fails({ method: 'HAND_DELIVERY' })).toBe('Choose Pickup Mtaani or Rider.')
+    expect(fails({ method: 'HAND_DELIVERY', deliveryOption: 'PICKUP_MTAANI', address: ' ' })).toBe('Add the Pickup Mtaani agent.')
+    expect(fails({ method: 'SHIPPING', busService: '  ' })).toBe('Add the bus service to send it with.')
+    expect(fails({ method: 'INTERNATIONAL', address: '' })).toBe('Add the full delivery address, including the country.')
+    expect(fails({ method: 'BY_AIR' as never })).toBe('Choose where the order is going.')
+
+    const pickup = createPaidOrder(emptyState(), { ...base, method: 'HAND_DELIVERY', deliveryOption: 'PICKUP_MTAANI', busService: 'ignored', address: 'Sarit Centre agent' })
+    expect(pickup.state.orders[0].fulfilment).toEqual({ method: 'HAND_DELIVERY', option: 'PICKUP_MTAANI', address: 'Sarit Centre agent', deliveryFee: 0 })
+    expect(deliveryLabel(pickup.state.orders[0].fulfilment)).toBe('Within Nairobi · Pickup Mtaani')
+    const bus = createPaidOrder(emptyState(), { ...base, method: 'SHIPPING', busService: ' Easy Coach ', address: 'Nakuru, Easy Coach office' })
+    expect(bus.state.orders[0].fulfilment).toEqual({ method: 'SHIPPING', busService: 'Easy Coach', address: 'Nakuru, Easy Coach office', deliveryFee: 0 })
+    expect(deliveryLabel(bus.state.orders[0].fulfilment)).toBe('Outside Nairobi · Easy Coach')
+    const abroad = createPaidOrder(emptyState(), { ...base, method: 'INTERNATIONAL', address: '12 High St, London, UK' })
+    expect(deliveryLabel(abroad.state.orders[0].fulfilment)).toBe('Outside Kenya')
+    // Orders sent abroad earn the service fee like other shipped orders.
+    expect(earnsServiceFee(abroad.state.orders[0], { ...DEFAULT_SETTINGS, feeOnHandDelivery: false })).toBe(true)
   })
 
   it('counts an older order paid in full before deposits existed', () => {

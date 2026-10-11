@@ -179,8 +179,14 @@ export function Terms() {
       <Section title="Delivery">
         <ul>
           <li>
-            At checkout you tell us whether delivery is <strong>within Nairobi</strong> or <strong>outside Nairobi</strong>. We confirm the
+            At checkout you choose <strong>within Nairobi</strong> (collect from a Pickup Mtaani agent, or a rider to your door),{' '}
+            <strong>outside Nairobi</strong> (sent with the bus service you name) or <strong>outside Kenya</strong> (by courier). We confirm the
             delivery fee when your order is ready, and it’s added to the balance before you pay it.
+          </li>
+          <li>
+            Parcels sent by bus or Pickup Mtaani are collected by you from the bus office or agent. Once we’ve handed your order to them,
+            please follow up with them on collection. Orders sent outside Kenya may be subject to customs duties in your country, which you
+            pay.
           </li>
           <li>
             Please give a correct address and a phone number we can reach. If we can’t deliver because of wrong details or nobody being

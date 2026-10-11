@@ -1,4 +1,4 @@
-import type { AppState, Channel, FulfilmentMethod, Order, OrderStatus, PaymentRecord, Settings } from './types'
+import type { AppState, Channel, DeliveryOption, Fulfilment, FulfilmentMethod, Order, OrderStatus, PaymentRecord, Settings } from './types'
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   PENDING_PAYMENT: 'Awaiting deposit',
@@ -24,6 +24,18 @@ export const PAYMENT_LABEL: Record<Order['payment']['status'], string> = {
 export const DELIVERY_LABEL: Record<FulfilmentMethod, string> = {
   HAND_DELIVERY: 'Within Nairobi',
   SHIPPING: 'Outside Nairobi',
+  INTERNATIONAL: 'Outside Kenya',
+}
+
+export const DELIVERY_OPTION_LABEL: Record<DeliveryOption, string> = {
+  PICKUP_MTAANI: 'Pickup Mtaani',
+  RIDER: 'Rider',
+}
+
+/** "Within Nairobi · Pickup Mtaani", "Outside Nairobi · Easy Coach", "Outside Kenya". */
+export function deliveryLabel(f: Fulfilment): string {
+  const how = f.method === 'HAND_DELIVERY' ? f.option && DELIVERY_OPTION_LABEL[f.option] : f.method === 'SHIPPING' ? f.busService : undefined
+  return how ? `${DELIVERY_LABEL[f.method]} · ${how}` : DELIVERY_LABEL[f.method]
 }
 
 const TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
@@ -43,6 +55,19 @@ const TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
   return TRANSITIONS[from].includes(to)
 }
+
+/** Photos of the finished order, oldest first. */
+export function readyPhotos(order: Order): string[] {
+  return order.readyPhotoUrls ?? (order.readyPhotoUrl ? [order.readyPhotoUrl] : [])
+}
+
+/** Photos sent with a chat message. */
+export function messageImages(m: { imageUrls?: string[]; imageUrl?: string }): string[] {
+  return m.imageUrls ?? (m.imageUrl ? [m.imageUrl] : [])
+}
+
+/** The most photos one order can have. */
+export const MAX_READY_PHOTOS = 8
 
 export function itemsSubtotal(order: Order): number {
   return order.items.reduce((sum, item) => sum + item.qty * item.unitPrice, 0)
@@ -101,7 +126,7 @@ export function refundAmountFor(order: Order): number {
 }
 
 export function earnsServiceFee(order: Order, settings: Settings): boolean {
-  return order.fulfilment.method === 'SHIPPING' || settings.feeOnHandDelivery
+  return order.fulfilment.method !== 'HAND_DELIVERY' || settings.feeOnHandDelivery
 }
 
 export function productName(state: AppState, productId: string): string {

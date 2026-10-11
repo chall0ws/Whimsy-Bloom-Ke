@@ -243,7 +243,7 @@ export function ProductPage({ productId }: { productId: string }) {
           </Button>
         </div>
         <p className={cx('flex items-center gap-2 text-xs text-muted')}>
-          <Truck size={14} aria-hidden /> Delivery within or outside Nairobi · the fee is confirmed when it’s ready
+          <Truck size={14} aria-hidden /> Pickup Mtaani, rider, bus or abroad · the delivery fee is confirmed when it’s ready
         </p>
       </div>
     </div>

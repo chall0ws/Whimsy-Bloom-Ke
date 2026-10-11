@@ -1,4 +1,5 @@
 import { ChevronLeft, CircleCheck, ExternalLink, Mail, MailOpen, Plus, Search, Send, StickyNote } from 'lucide-react'
+import { PhotoGrid } from '../components/PhotoGrid'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PageHeader } from '../components/Layout'
 import { CreateOrderDialog } from '../components/orders'
@@ -6,7 +7,7 @@ import { Avatar, Button, cx, EmptyState, inputClass, Segmented, StatusChip, Unre
 import { AUTO_REPLY } from '../domain/actions'
 import { formatDate, formatKES, formatTime, isSameDay, relativeTime } from '../domain/format'
 import { customerStats, lastMessageAt, unreadCount, unreadTotals } from '../domain/metrics'
-import { amountDue, orderSummary, orderTotal, paymentStage } from '../domain/orders'
+import { amountDue, messageImages, orderSummary, orderTotal, paymentStage } from '../domain/orders'
 import type { Message, Thread } from '../domain/types'
 import { navigate } from '../router'
 import { makeTypingNotifier, useLiveSignals } from '../state/live'
@@ -292,7 +293,7 @@ function StaffBubble({ message: m }: { message: Message }) {
   return (
     <div className={cx('flex', shop ? 'justify-end' : 'justify-start')}>
       <div className={cx('max-w-[78%] rounded-2xl px-3.5 py-2 text-sm', shop ? 'rounded-br-md bg-green text-on-green' : 'rounded-bl-md bg-surface-2 text-ink')}>
-        {m.imageUrl && <img src={m.imageUrl} alt="Photo" loading="lazy" className="mb-1.5 max-h-64 w-full rounded-xl object-cover" />}
+        <PhotoGrid urls={messageImages(m)} alt="Photo" className="mb-1.5 overflow-hidden rounded-xl" imgClassName="max-h-64" />
         <p className="whitespace-pre-wrap">{m.text}</p>
         {m.kind === 'PAYMENT_LINK' && order && (
           <div className="mt-2 rounded-lg bg-black/10 px-2.5 py-1.5 text-xs">
