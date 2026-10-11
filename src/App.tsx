@@ -19,7 +19,7 @@ import { Catalog, Home, ProductPage } from './shop/Browse'
 import { CartProvider } from './shop/cart'
 import { confirm, outcomeMessage, takeReturnFromPaystack } from './shop/paystack'
 import { CartPage, Checkout, Thanks } from './shop/Checkout'
-import { Privacy } from './shop/Privacy'
+import { Privacy, Terms } from './shop/Legal'
 import { ShopLayout } from './shop/ShopLayout'
 import { StoreProvider, useStore } from './state/store'
 import { applyTheme, readTheme } from './theme'
@@ -53,6 +53,7 @@ function Page() {
             {route.page === 'account' && <AccountPage tab={route.tab} />}
             {route.page === 'chat' && <CustomerChat />}
             {route.page === 'privacy' && <Privacy />}
+            {route.page === 'terms' && <Terms />}
           </div>
         </ShopLayout>
         <Toasts />

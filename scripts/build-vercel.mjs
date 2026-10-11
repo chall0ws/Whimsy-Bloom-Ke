@@ -33,8 +33,8 @@ for (const [path, name] of Object.entries(routes)) {
   mkdirSync(dirname(dir), { recursive: true })
 }
 
-// Plain page addresses that the app shows itself (e.g. /privacy, which Google's sign-in setup links to).
-const appPages = ['privacy']
+// Plain page addresses that the app shows itself (/privacy and /terms, which Google's sign-in setup links to).
+const appPages = ['privacy', 'terms']
 const vercelRoutes = [
   // "/privacy/" → "/privacy", so the page's relative asset links keep working.
   ...appPages.map((page) => ({ src: `^/${page}/$`, status: 308, headers: { Location: `/${page}` } })),
