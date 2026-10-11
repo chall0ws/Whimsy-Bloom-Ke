@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { AuthProvider } from './auth/AuthProvider'
 import { StaffGate } from './auth/StaffGate'
 import { LIVE } from './config'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Layout } from './components/Layout'
 import { OrderDrawer } from './components/orders'
 import { Toasts } from './components/ui'
@@ -44,16 +45,18 @@ function Page() {
       <>
         <ShopLayout route={route}>
           <div key={pageKey(route)} className="anim-page">
-            {route.page === 'home' && <Home />}
-            {route.page === 'shop' && <Catalog />}
-            {route.page === 'product' && <ProductPage productId={route.productId} />}
-            {route.page === 'cart' && <CartPage />}
-            {route.page === 'checkout' && <Checkout />}
-            {route.page === 'thanks' && <Thanks orderId={route.orderId} />}
-            {route.page === 'account' && <AccountPage tab={route.tab} />}
-            {route.page === 'chat' && <CustomerChat />}
-            {route.page === 'privacy' && <Privacy />}
-            {route.page === 'terms' && <Terms />}
+            <ErrorBoundary>
+              {route.page === 'home' && <Home />}
+              {route.page === 'shop' && <Catalog />}
+              {route.page === 'product' && <ProductPage productId={route.productId} />}
+              {route.page === 'cart' && <CartPage />}
+              {route.page === 'checkout' && <Checkout />}
+              {route.page === 'thanks' && <Thanks orderId={route.orderId} />}
+              {route.page === 'account' && <AccountPage tab={route.tab} />}
+              {route.page === 'chat' && <CustomerChat />}
+              {route.page === 'privacy' && <Privacy />}
+              {route.page === 'terms' && <Terms />}
+            </ErrorBoundary>
           </div>
         </ShopLayout>
         <Toasts />
@@ -66,13 +69,15 @@ function Page() {
     <StaffGate>
       <Layout route={route}>
         <div key={pageKey(route)} className="anim-page">
-          {route.page === 'overview' && <Overview />}
-          {route.page === 'orders' && <Orders />}
-          {route.page === 'inbox' && <Inbox threadId={route.threadId} />}
-          {route.page === 'customers' && <Customers customerId={route.customerId} />}
-          {route.page === 'inventory' && <Inventory />}
-          {route.page === 'fees' && <Fees />}
-          {route.page === 'settings' && <Settings />}
+          <ErrorBoundary>
+            {route.page === 'overview' && <Overview />}
+            {route.page === 'orders' && <Orders />}
+            {route.page === 'inbox' && <Inbox threadId={route.threadId} />}
+            {route.page === 'customers' && <Customers customerId={route.customerId} />}
+            {route.page === 'inventory' && <Inventory />}
+            {route.page === 'fees' && <Fees />}
+            {route.page === 'settings' && <Settings />}
+          </ErrorBoundary>
         </div>
         <OrderDrawer />
       </Layout>
@@ -101,13 +106,15 @@ function PaystackReturn() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <StoreProvider>
-        <CartProvider>
-          <PaystackReturn />
-          <Page />
-        </CartProvider>
-      </StoreProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <StoreProvider>
+          <CartProvider>
+            <PaystackReturn />
+            <Page />
+          </CartProvider>
+        </StoreProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
