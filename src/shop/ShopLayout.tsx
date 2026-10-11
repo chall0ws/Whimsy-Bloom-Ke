@@ -2,6 +2,7 @@ import { MessageCircle, ShoppingBag, UserRound } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { ChatWidget, customerUnread, useMyThread } from '../components/chat/ChatWidget'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import { BloomMark, HeartDivider, Logo, Script } from '../components/Logo'
 import { TeamPreviewBar } from '../components/TeamPreviewBar'
 import { cx, usePresence } from '../components/ui'
@@ -122,15 +123,16 @@ function ChatBubble() {
   return (
     <>
       {mounted && (
-        <ChatWidget
-          startedFrom="ORDER_FORM"
-          identity={identity}
-          onClose={() => setOpen(false)}
+        <div
           className={cx(
-            'fixed inset-x-3 bottom-3 top-16 z-50 origin-bottom-right sm:inset-x-auto sm:right-6 sm:top-auto sm:bottom-24 sm:h-[560px] sm:w-[380px]',
+            'fixed inset-x-3 bottom-3 top-16 z-50 flex origin-bottom-right flex-col sm:inset-x-auto sm:right-6 sm:top-auto sm:bottom-24 sm:h-[560px] sm:w-[380px]',
             leaving ? 'anim-pop-out pointer-events-none' : 'anim-pop-in',
           )}
-        />
+        >
+          <ErrorBoundary size="panel">
+            <ChatWidget startedFrom="ORDER_FORM" identity={identity} onClose={() => setOpen(false)} className="min-h-0 flex-1" />
+          </ErrorBoundary>
+        </div>
       )}
       <button
         type="button"
