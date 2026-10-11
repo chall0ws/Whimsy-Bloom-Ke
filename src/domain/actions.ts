@@ -17,7 +17,7 @@ import type {
   MessageSender,
   Thread,
 } from './types'
-import { CUSTOMER_ACTOR } from './types'
+import { CUSTOMER_ACTOR, PAYSTACK_ACTOR } from './types'
 
 export interface OrderDraft {
   customerId?: string
@@ -53,12 +53,34 @@ export type Action =
   | { type: 'SIGN_IN_STAFF'; email: string; name: string; role: Role }
   | { type: 'SIGN_OUT' }
   // Customer side: live chat, order form and client portal. These run as the customer, not as a team member.
-  | { type: 'CUSTOMER_START_CHAT'; name: string; phone: string; email?: string; startedFrom: Thread['startedFrom']; text?: string }
+  | {
+      type: 'CUSTOMER_START_CHAT'
+      name: string
+      phone: string
+      email?: string
+      startedFrom: Thread['startedFrom']
+      text?: string
+      /** The signed-in customer's own record, when known. */
+      customerId?: string
+      /** Start a separate conversation instead of continuing the customer's existing one. */
+      newThread?: boolean
+    }
   | { type: 'CUSTOMER_SEND_MESSAGE'; threadId: string; text: string }
   | { type: 'CUSTOMER_READ'; threadId: string }
   | { type: 'CUSTOMER_PAY'; orderId: string; reference: string; customerId?: string }
   | { type: 'CUSTOMER_PLACE_ORDER'; draft: OrderDraft }
-  | { type: 'CUSTOMER_LINK_ACCOUNT'; email: string; name: string; phone: string; address?: string; claimOrderId?: string }
+  | {
+      type: 'CUSTOMER_LINK_ACCOUNT'
+      email: string
+      name: string
+      phone: string
+      address?: string
+      claimOrderId?: string
+      /** Bring over past orders made with the same phone number. Off in live mode until numbers are verified by SMS. */
+      allowPhoneMatch?: boolean
+    }
+  // Sent only by the server when Paystack confirms a payment.
+  | { type: 'PAYMENT_RECEIVED'; orderId: string; method: PaymentMethod; reference: string; amount: number }
   | { type: 'CUSTOMER_UPDATE_PROFILE'; customerId: string; email: string; patch: Partial<Pick<Customer, 'name' | 'phone' | 'address'>> }
 
 export type ActionResult =
@@ -79,7 +101,9 @@ const NO_TEAM_MEMBER_NEEDED: Action['type'][] = ['SIGN_IN_STAFF', 'SIGN_OUT']
 
 export function applyAction(state: AppState, action: Action, now: Date): ActionResult {
   let actor = CUSTOMER_ACTOR
-  if (NO_TEAM_MEMBER_NEEDED.includes(action.type)) {
+  if (action.type === 'PAYMENT_RECEIVED') {
+    actor = PAYSTACK_ACTOR
+  } else if (NO_TEAM_MEMBER_NEEDED.includes(action.type)) {
     actor = state.currentUserId
   } else if (!action.type.startsWith('CUSTOMER_')) {
     const user = state.users.find((u) => u.id === state.currentUserId)
@@ -298,6 +322,15 @@ function run(tx: Tx, action: Action): string | undefined {
     }
     case 'CUSTOMER_LINK_ACCOUNT':
       return linkAccount(tx, action)
+    case 'PAYMENT_RECEIVED': {
+      const order = tx.order(action.orderId)
+      if (!order) return 'Order not found.'
+      // Paystack can report the same payment more than once.
+      if (order.payment.status !== 'UNPAID') return order.payment.reference === action.reference.toUpperCase() ? undefined : 'This order is already paid.'
+      if (order.status !== 'PENDING_PAYMENT') return `Payment received for ${order.number}, but the order is ${STATUS_LABEL[order.status].toLowerCase()}. Refund it in Paystack.`
+      if (action.amount !== orderTotal(order)) return `Paid ${formatKES(action.amount)} but ${order.number} costs ${formatKES(orderTotal(order))}.`
+      return confirmPayment(tx, order.id, action.method, action.reference)
+    }
     case 'CUSTOMER_UPDATE_PROFILE': {
       const customer = tx.state.customers.find((c) => c.id === action.customerId)
       if (!customer || customer.email?.toLowerCase() !== action.email.trim().toLowerCase()) return 'You can only change your own details.'
@@ -336,7 +369,7 @@ function linkAccount(tx: Tx, a: Extract<Action, { type: 'CUSTOMER_LINK_ACCOUNT' 
   if (!target) {
     if (!name) return 'Please add your name.'
     if (digits(phone).length < 9) return 'Please add a phone number we can reach you on.'
-    const byPhone = tx.state.customers.find((c) => c.phone && digits(c.phone) === digits(phone) && !c.email)
+    const byPhone = a.allowPhoneMatch === false ? undefined : tx.state.customers.find((c) => c.phone && digits(c.phone) === digits(phone) && !c.email)
     if (byPhone) {
       target = { ...byPhone, email, address: byPhone.address ?? (a.address?.trim() || undefined) }
       setCustomer(target)
@@ -359,14 +392,17 @@ function startChat(tx: Tx, a: Extract<Action, { type: 'CUSTOMER_START_CHAT' }>) 
   if (!name) return 'Please add your name.'
   if (digits(a.phone).length < 9) return 'Please add a phone number we can reach you on.'
 
-  let customer = tx.state.customers.find((c) => c.phone && digits(c.phone) === digits(a.phone))
+  let customer = a.customerId
+    ? tx.state.customers.find((c) => c.id === a.customerId)
+    : tx.state.customers.find((c) => c.phone && digits(c.phone) === digits(a.phone))
+  if (a.customerId && !customer) return 'Your account wasn’t found. Please sign in again.'
   if (!customer) {
     customer = { id: tx.id('c'), name, phone: a.phone.trim(), email: a.email?.trim() || undefined, notes: '', tags: [], createdAt: tx.at }
     tx.state = { ...tx.state, customers: [...tx.state.customers, customer] }
   }
 
   // One conversation per customer, so she sees their whole history in one place.
-  let thread = tx.state.threads.find((t) => t.customerId === customer.id)
+  let thread = a.newThread ? undefined : tx.state.threads.find((t) => t.customerId === customer.id)
   if (!thread) {
     thread = { id: tx.id('t'), customerId: customer.id, startedFrom: a.startedFrom, startedAt: tx.at, messages: [], customerReadAt: tx.at }
     tx.state = { ...tx.state, threads: [...tx.state.threads, thread] }

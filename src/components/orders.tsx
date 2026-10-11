@@ -1,5 +1,6 @@
 import { Ban, Clock, CreditCard, Lock, MapPin, MessageCircle, Plus, Send, Trash2, Truck, Undo2, UserRound } from 'lucide-react'
 import { useState } from 'react'
+import { LIVE } from '../config'
 import type { OrderDraft } from '../domain/actions'
 import { COURIERS } from '../domain/catalog'
 import { formatDate, formatDateTime, formatKES, relativeTime } from '../domain/format'
@@ -97,8 +98,8 @@ function ShipDialog({ order, open, onClose }: { order: Order; open: boolean; onC
           </Button>
           <Button
             variant="primary"
-            onClick={() => {
-              const r = dispatch({ type: 'SET_STATUS', orderId: order.id, status: 'SHIPPED', courier: hand ? undefined : courier, trackingNumber: hand ? undefined : tracking })
+            onClick={async () => {
+              const r = await dispatch({ type: 'SET_STATUS', orderId: order.id, status: 'SHIPPED', courier: hand ? undefined : courier, trackingNumber: hand ? undefined : tracking })
               if (r.ok) onClose()
             }}
           >
@@ -161,8 +162,8 @@ function PaymentDialog({ order, open, onClose }: { order: Order; open: boolean; 
           </Button>
           <Button
             variant="primary"
-            onClick={() => {
-              const r = dispatch({ type: 'CONFIRM_PAYMENT', orderId: order.id, method, reference })
+            onClick={async () => {
+              const r = await dispatch({ type: 'CONFIRM_PAYMENT', orderId: order.id, method, reference })
               if (r.ok) onClose()
             }}
           >
@@ -186,7 +187,7 @@ function PaymentDialog({ order, open, onClose }: { order: Order; open: boolean; 
         <Field label={method === 'MPESA' ? 'M-Pesa confirmation code' : 'Card payment reference'}>
           <input className={inputClass} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. SJK7H2L9QX" autoFocus />
         </Field>
-        <p className="text-xs text-muted">In Stage B this happens automatically when the payment provider confirms the payment.</p>
+        <p className="text-xs text-muted">{LIVE ? 'Paystack payments are confirmed automatically. Use this for cash or an M-Pesa payment made straight to her number.' : 'Once live, Paystack payments are confirmed automatically.'}</p>
       </div>
     </Modal>
   )
@@ -409,8 +410,8 @@ export function OrderDrawer() {
             </Button>
             <Button
               variant="danger"
-              onClick={() => {
-                const r = dispatch(confirm === 'refund' ? { type: 'REFUND_ORDER', orderId: order.id } : { type: 'SET_STATUS', orderId: order.id, status: 'CANCELLED' })
+              onClick={async () => {
+                const r = await dispatch(confirm === 'refund' ? { type: 'REFUND_ORDER', orderId: order.id } : { type: 'SET_STATUS', orderId: order.id, status: 'CANCELLED' })
                 if (r.ok) setConfirm(null)
               }}
             >
@@ -456,7 +457,7 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
   const subtotal = items.reduce((s, i) => s + i.qty * (state.products.find((p) => p.id === i.productId)?.price ?? 0), 0)
   const fee = method === 'HAND_DELIVERY' ? 0 : deliveryFee
 
-  const submit = () => {
+  const submit = async () => {
     const draft: OrderDraft = {
       customerId: customer?.id,
       customerName: name,
@@ -470,7 +471,7 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
       deliveryFee: fee,
       payment: payKind === 'PAID' ? { kind: 'PAID', method: payMethod, reference } : { kind: payKind },
     }
-    const r = dispatch({ type: 'CREATE_ORDER', draft })
+    const r = await dispatch({ type: 'CREATE_ORDER', draft })
     if (r.ok) {
       onClose()
       if (!thread && r.createdOrderId) openOrder(r.createdOrderId)

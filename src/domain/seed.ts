@@ -19,6 +19,32 @@ import type {
 
 export const STATE_VERSION = 3
 
+/**
+ * The starting point for a real shop: the catalogue and materials, and nothing else.
+ * Team members are added the first time they sign in.
+ */
+export function createEmptyState(): AppState {
+  return {
+    version: STATE_VERSION,
+    users: [],
+    currentUserId: '',
+    products: PRODUCTS,
+    materials: MATERIALS.map((m) => ({ ...m })),
+    recipes: RECIPES,
+    customers: [],
+    orders: [],
+    threads: [],
+    fees: [],
+    payouts: [],
+    movements: [],
+    audit: [],
+    settings: { ...DEFAULT_SETTINGS },
+    chatStatus: 'ONLINE',
+    nextOrderNumber: 1001,
+    nextId: 1000,
+  }
+}
+
 const OWNER = 'u-owner'
 const PARTNER = 'u-partner'
 const HOUR = 3_600_000

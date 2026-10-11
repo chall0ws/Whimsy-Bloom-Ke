@@ -1,0 +1,7 @@
+{
+  "/api/state": "state",
+  "/api/action": "action",
+  "/api/pay/start": "pay-start",
+  "/api/pay/verify": "pay-verify",
+  "/api/pay/webhook": "pay-webhook"
+}

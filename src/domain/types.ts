@@ -100,6 +100,8 @@ export interface Order {
   shippedAt?: string
   history: StatusEvent[]
   materialsDeducted: boolean
+  /** Secret that lets the guest who placed this order see and pay for it (live mode). */
+  accessToken?: string
 }
 
 export interface Customer {
@@ -141,6 +143,8 @@ export interface Thread {
   messages: Message[]
   /** Last time the customer looked at the conversation; shop messages before this show as "Seen". */
   customerReadAt?: string
+  /** Secret that lets the guest who started this chat read it (live mode). */
+  accessToken?: string
 }
 
 export type ChatStatus = 'ONLINE' | 'AWAY'
@@ -211,7 +215,12 @@ export interface AppState {
   chatStatus: ChatStatus
   nextOrderNumber: number
   nextId: number
+  /** Best-selling products, sent to shoppers who can't see the orders themselves (live mode). */
+  popularProductIds?: string[]
 }
 
 /** Actor id used for orders that customers place themselves through the web form. */
 export const CUSTOMER_ACTOR = 'customer'
+
+/** Actor id for payments confirmed by Paystack. */
+export const PAYSTACK_ACTOR = 'paystack'

@@ -18,7 +18,7 @@ export function useStaffRole() {
 /** Lets only team members into the dashboard. */
 export function StaffGate({ children }: { children: ReactNode }) {
   const { account, loading } = useAuth()
-  const { state, dispatch } = useStore()
+  const { state, dispatch, ready: loaded } = useStore()
   const role = useStaffRole()
   const current = state.users.find((u) => u.id === state.currentUserId)
   const ready = Boolean(account && role && current && current.email.toLowerCase() === account.email.toLowerCase() && current.role === role)
@@ -27,7 +27,7 @@ export function StaffGate({ children }: { children: ReactNode }) {
     if (account && role && !ready) dispatch({ type: 'SIGN_IN_STAFF', email: account.email, name: account.name, role })
   }, [account, role, ready, dispatch])
 
-  if (loading || (account && role && !ready)) return <Centered>{null}</Centered>
+  if (loading || (account && role && (!ready || !loaded))) return <Centered>{null}</Centered>
   if (!account) return <StaffSignIn />
   if (!role) return <NotOnTeam email={account.email} unverifiedTeamEmail={!account.verified && Boolean(staffRoleFor(account.email, CONFIGURED_STAFF, state.users))} />
   return <>{children}</>

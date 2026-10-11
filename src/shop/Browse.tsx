@@ -19,9 +19,11 @@ const FEATURES = [
 
 export function Home() {
   const { state } = useStore()
-  const favourites = productPerformance(state)
+  // Live, visitors can't see other people's orders, so the server sends the best sellers.
+  const favourites = (state.popularProductIds ?? productPerformance(state).map((p) => p.productId))
+    .map((id) => state.products.find((x) => x.id === id))
+    .filter((p) => p !== undefined)
     .slice(0, 3)
-    .map((p) => state.products.find((x) => x.id === p.productId)!)
 
   return (
     <div className="space-y-14">

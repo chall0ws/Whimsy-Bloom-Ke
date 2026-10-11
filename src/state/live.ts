@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { LIVE } from '../config'
+import { getSupabase } from '../lib/supabase'
 
 /**
  * Short-lived chat signals (typing, "customer is on the page") that are never saved.
- * In Stage A they travel between browser tabs over a BroadcastChannel; in Stage B
- * the same events go over the backend's realtime connection.
+ * In demo mode they travel between browser tabs over a BroadcastChannel; live, they go
+ * over a Supabase realtime channel.
  */
 export interface LiveEvent {
   kind: 'typing' | 'presence'
@@ -15,23 +17,48 @@ export interface LiveEvent {
 const TYPING_MS = 4_000
 const PRESENCE_MS = 40_000
 
-let channel: BroadcastChannel | null | undefined
 const listeners = new Set<(e: LiveEvent) => void>()
+const deliver = (e: LiveEvent) => listeners.forEach((l) => l(e))
 
-function getChannel(): BroadcastChannel | null {
-  if (channel !== undefined) return channel
-  try {
-    channel = new BroadcastChannel('whimsy-bloom:live')
-    channel.onmessage = (msg: MessageEvent<LiveEvent>) => listeners.forEach((l) => l(msg.data))
-  } catch {
-    channel = null
+interface Transport {
+  send(e: LiveEvent): void
+}
+let transport: Transport | null | undefined
+
+/** Live: a Supabase realtime channel shared by every visitor. Demo: a channel between this browser's tabs. */
+function getTransport(): Transport | null {
+  if (transport !== undefined) return transport
+  if (LIVE) {
+    const pending: LiveEvent[] = []
+    let send: (e: LiveEvent) => void = (e) => void (pending.length < 20 && pending.push(e))
+    transport = { send: (e) => send(e) }
+    getSupabase()
+      .then((sb) => {
+        const channel = sb.channel('whimsy-live', { config: { broadcast: { self: false } } })
+        channel.on('broadcast', { event: 'signal' }, ({ payload }) => deliver(payload as LiveEvent)).subscribe((status) => {
+          if (status !== 'SUBSCRIBED') return
+          send = (e) => void channel.send({ type: 'broadcast', event: 'signal', payload: e })
+          pending.splice(0).forEach(send)
+        })
+      })
+      .catch(() => {
+        send = () => {}
+      })
+    return transport
   }
-  return channel
+  try {
+    const channel = new BroadcastChannel('whimsy-bloom:live')
+    channel.onmessage = (msg: MessageEvent<LiveEvent>) => deliver(msg.data)
+    transport = { send: (e) => channel.postMessage(e) }
+  } catch {
+    transport = null
+  }
+  return transport
 }
 
 export function sendLive(event: Omit<LiveEvent, 'at'>) {
   try {
-    getChannel()?.postMessage({ ...event, at: Date.now() })
+    getTransport()?.send({ ...event, at: Date.now() })
   } catch {
     // Signals are best-effort; the chat works without them.
   }
@@ -53,7 +80,7 @@ export function useLiveSignals() {
   const [, tick] = useState(0)
 
   useEffect(() => {
-    getChannel()
+    getTransport()
     const onEvent = (e: LiveEvent) => setEvents((prev) => ({ ...prev, [`${e.kind}:${e.from}:${e.threadId}`]: e.at }))
     listeners.add(onEvent)
     // Re-render now and then so signals expire on time.
