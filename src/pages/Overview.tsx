@@ -4,7 +4,7 @@ import { ChartCard, ColumnChart, HBarChart } from '../components/charts/charts'
 import { FeeTrackerCard } from '../components/fees'
 import { PageHeader } from '../components/Layout'
 import { CreateOrderDialog, OrderTable } from '../components/orders'
-import { Avatar, Card, cx, Segmented, UnreadBadge } from '../components/ui'
+import { Avatar, Card, cx, Segmented, UnreadBadge, useDialog } from '../components/ui'
 import { formatDate, formatKES, formatNumber, relativeTime } from '../domain/format'
 import { customerGrowth, lastMessageAt, ordersToday, productPerformance, revenueSince, totalRevenue, unreadCount, unreadTotals } from '../domain/metrics'
 import { sortNewestFirst } from '../domain/orders'
@@ -19,7 +19,7 @@ export function Overview() {
   const { state, now, user } = useStore()
   const [filter, setFilter] = useState<Filter>('ALL')
   const [range, setRange] = useState<Range>('30')
-  const [creating, setCreating] = useState(false)
+  const creating = useDialog()
 
   const today = ordersToday(state.orders, now)
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -57,7 +57,7 @@ export function Overview() {
             <a href="#/" className="inline-flex h-10 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-4 text-sm font-medium hover:bg-surface-2">
               <Store size={15} aria-hidden /> View shop
             </a>
-            <button type="button" onClick={() => setCreating(true)} className="inline-flex h-10 items-center gap-1.5 rounded-full bg-green px-4 text-sm font-medium text-on-green hover:opacity-90">
+            <button type="button" onClick={creating.show} className="inline-flex h-10 items-center gap-1.5 rounded-full bg-green px-4 text-sm font-medium text-on-green hover:opacity-90">
               <Plus size={16} aria-hidden /> New order
             </button>
           </>
@@ -139,7 +139,7 @@ export function Overview() {
         </ChartCard>
       </div>
 
-      <CreateOrderDialog key={String(creating)} open={creating} onClose={() => setCreating(false)} />
+      <CreateOrderDialog key={creating.key} open={creating.open} onClose={creating.hide} />
     </>
   )
 }

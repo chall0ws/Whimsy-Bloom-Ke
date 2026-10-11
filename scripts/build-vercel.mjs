@@ -33,5 +33,13 @@ for (const [path, name] of Object.entries(routes)) {
   mkdirSync(dirname(dir), { recursive: true })
 }
 
-writeFileSync(join(out, 'config.json'), JSON.stringify({ version: 3, routes: [{ handle: 'filesystem' }] }, null, 2))
+// Plain page addresses that the app shows itself (e.g. /privacy, which Google's sign-in setup links to).
+const appPages = ['privacy']
+const vercelRoutes = [
+  // "/privacy/" → "/privacy", so the page's relative asset links keep working.
+  ...appPages.map((page) => ({ src: `^/${page}/$`, status: 308, headers: { Location: `/${page}` } })),
+  { handle: 'filesystem' },
+  ...appPages.map((page) => ({ src: `^/${page}(?:\\.html)?$`, dest: '/index.html' })),
+]
+writeFileSync(join(out, 'config.json'), JSON.stringify({ version: 3, routes: vercelRoutes }, null, 2))
 console.log(`Vercel output ready: static site + ${Object.keys(routes).length} server functions`)

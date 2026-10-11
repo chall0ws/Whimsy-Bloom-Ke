@@ -12,6 +12,7 @@ export type ShopRoute =
   | { page: 'thanks'; orderId: string }
   | { page: 'account'; tab?: AccountTab }
   | { page: 'chat' }
+  | { page: 'privacy' }
 
 /** The team dashboard, under #/admin. */
 export type AdminRoute =
@@ -54,6 +55,7 @@ export function parseHash(hash: string): Route {
     case 'cart':
     case 'checkout':
     case 'chat':
+    case 'privacy':
       return { page: first }
     case 'thanks':
       return second ? { page: 'thanks', orderId: second } : { page: 'home' }
@@ -84,6 +86,7 @@ export function href(route: Route): string {
     case 'cart':
     case 'checkout':
     case 'chat':
+    case 'privacy':
       return `#/${route.page}`
     case 'overview':
       return '#/admin'
@@ -100,11 +103,18 @@ export function navigate(route: Route) {
   window.location.hash = href(route)
 }
 
+/** The page for the current address. "/privacy" is a plain link for Google and others; everything else uses "#/…". */
+export function currentRoute(): Route {
+  const hash = window.location.hash.replace(/^#\/?/, '')
+  if (!hash && /\/privacy(\.html)?\/?$/.test(window.location.pathname)) return { page: 'privacy' }
+  return parseHash(window.location.hash)
+}
+
 export function useRoute(): Route {
-  const [route, setRoute] = useState(() => parseHash(window.location.hash))
+  const [route, setRoute] = useState(currentRoute)
   useEffect(() => {
     const onChange = () => {
-      setRoute(parseHash(window.location.hash))
+      setRoute(currentRoute())
       window.scrollTo(0, 0)
     }
     window.addEventListener('hashchange', onChange)

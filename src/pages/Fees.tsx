@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { ChartCard, ColumnChart } from '../components/charts/charts'
 import { PayoutDialog } from '../components/fees'
 import { PageHeader } from '../components/Layout'
-import { Button, Card, cx, EmptyState } from '../components/ui'
+import { Button, Card, cx, EmptyState, useDialog } from '../components/ui'
 import { feeSummary } from '../domain/fees'
 import { formatDate, formatDateTime, formatKES, formatNumber } from '../domain/format'
 import { weeklyBuckets } from '../domain/metrics'
@@ -11,7 +11,7 @@ import { useStore, userName } from '../state/store'
 
 export function Fees() {
   const { state, now, isSuperAdmin, dispatch, openOrder } = useStore()
-  const [paying, setPaying] = useState(false)
+  const paying = useDialog()
   const [showAll, setShowAll] = useState(false)
   const s = feeSummary(state)
   const feeDates = state.fees.map((f) => f.at)
@@ -31,7 +31,7 @@ export function Fees() {
         title="Service fees"
         subtitle={`${formatKES(state.settings.serviceFee)} for every shipped order, paid ${state.settings.payoutSchedule === 'WEEKLY' ? 'weekly' : 'monthly'} to the platform partner.`}
         actions={
-          <Button variant="primary" onClick={() => setPaying(true)} disabled={s.availableToSend <= 0}>
+          <Button variant="primary" onClick={paying.show} disabled={s.availableToSend <= 0}>
             <Banknote size={16} aria-hidden /> Record payout
           </Button>
         }
@@ -140,7 +140,7 @@ export function Fees() {
         </Card>
       </div>
 
-      <PayoutDialog key={String(paying)} open={paying} onClose={() => setPaying(false)} />
+      <PayoutDialog key={paying.key} open={paying.open} onClose={paying.hide} />
     </>
   )
 }
