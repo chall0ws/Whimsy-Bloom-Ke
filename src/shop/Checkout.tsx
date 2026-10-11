@@ -8,12 +8,12 @@ import { Button, cx, Field, inputClass } from '../components/ui'
 import { LIVE } from '../config'
 import type { OrderDraft } from '../domain/actions'
 import { formatKES } from '../domain/format'
-import { orderSummary, orderTotal, productName } from '../domain/orders'
+import { amountDue, DELIVERY_LABEL, orderSummary, orderTotal, productName } from '../domain/orders'
 import type { FulfilmentMethod } from '../domain/types'
 import { navigate } from '../router'
 import { useStore } from '../state/store'
 import { placedHere, rememberOrder, useCart } from './cart'
-import { mpesaReference, OrderTracker, PayButton, payLabel } from './OrderBits'
+import { mpesaReference, OrderTracker, PayButton, payLabel, PaymentSummary } from './OrderBits'
 import { outcomeMessage, payOrder } from './paystack'
 import { ProductArt } from './ProductArt'
 import { Loading } from './ShopLayout'
@@ -96,7 +96,7 @@ export function CartPage() {
           <span>Bouquets</span>
           <span className="font-semibold">{formatKES(subtotal)}</span>
         </div>
-        <p className="text-xs text-muted">Delivery is added at checkout. Hand delivery in Nairobi is free.</p>
+        <p className="text-xs text-muted">At checkout you pay a 50% deposit. The rest, plus delivery, is due when your bouquet is ready.</p>
         <a href="#/checkout" className="flex h-12 items-center justify-center rounded-full bg-green text-[15px] font-medium text-on-green hover:opacity-90">
           Checkout
         </a>
@@ -115,7 +115,8 @@ export function Checkout() {
   const [name, setName] = useState(customer?.name ?? account?.name ?? '')
   const [phone, setPhone] = useState(customer?.phone ?? '')
   const [email, setEmail] = useState('')
-  const [method, setMethod] = useState<FulfilmentMethod>('SHIPPING')
+  // No default: the customer must say whether it's within or outside Nairobi.
+  const [method, setMethod] = useState<FulfilmentMethod | null>(null)
   const [address, setAddress] = useState(customer?.address ?? '')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
@@ -133,19 +134,22 @@ export function Checkout() {
   }, [account, customer])
 
   const subtotal = lines.reduce((s, l) => s + l.qty * (state.products.find((p) => p.id === l.productId)?.price ?? 0), 0)
-  const deliveryFee = method === 'HAND_DELIVERY' ? 0 : state.settings.defaultShippingFee
+  // Every order starts with a 50% deposit; the rest plus delivery is paid when it's ready.
+  const deposit = Math.ceil(subtotal / 2)
 
   const check = () => {
     if (lines.length === 0) return 'Your cart is empty.'
     if (!name.trim()) return 'Please add your name.'
     if (phone.replace(/\D/g, '').length < 9) return 'Please add a phone number for M-Pesa and delivery.'
     if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) return 'That email address doesn’t look right.'
+    if (!method) return 'Please choose Within Nairobi or Outside Nairobi.'
     if (!address.trim()) return 'Please add where we should deliver.'
     return ''
   }
 
-  const place = async (payNow: boolean) => {
-    if (placing.current) return
+  /** Saves the order (awaiting its deposit), then takes the deposit: Paystack live, a pretend prompt in the demo. */
+  const place = async () => {
+    if (placing.current || !method) return
     placing.current = true
     setBusy(true)
     try {
@@ -153,8 +157,6 @@ export function Checkout() {
         ...lines.filter((l) => l.note.trim()).map((l) => `${productName(state, l.productId)}: ${l.note.trim()}`),
         note.trim(),
       ].filter(Boolean)
-      // Live, the order is saved unpaid first and Paystack's confirmation marks it paid.
-      const simulatedPaid = payNow && !LIVE
       const base: Omit<OrderDraft, 'channel'> = {
         customerName: name,
         phone,
@@ -162,7 +164,7 @@ export function Checkout() {
         customisation: wishes.join('; '),
         method,
         address,
-        payment: simulatedPaid ? { kind: 'PAID', method: 'MPESA', reference: mpesaReference() } : { kind: 'UNPAID' },
+        payment: { kind: 'UNPAID' },
       }
       let draft: OrderDraft
       let accountCustomerId: string | undefined
@@ -183,9 +185,10 @@ export function Checkout() {
         await dispatch({ type: 'CUSTOMER_UPDATE_PROFILE', customerId: saved.id, email: account.email, patch: { address: saved.address || address, phone: saved.phone || phone } })
       }
       rememberOrder(orderId)
+      if (!LIVE) await dispatch({ type: 'CUSTOMER_PAY', orderId, customerId: accountCustomerId, reference: mpesaReference() })
       clear()
       navigate({ page: 'thanks', orderId })
-      if (payNow && LIVE) {
+      if (LIVE) {
         const message = outcomeMessage(await payOrder(orderId))
         if (message) toast(message.text, message.tone)
         await refresh()
@@ -199,7 +202,7 @@ export function Checkout() {
 
   useEffect(() => {
     if (!paying) return
-    const timer = setTimeout(() => place(true), 2000)
+    const timer = setTimeout(() => place(), 2000)
     return () => clearTimeout(timer)
   }, [paying])
 
@@ -211,7 +214,7 @@ export function Checkout() {
         <Smartphone size={40} className="animate-pulse text-green" aria-hidden />
         <h1 className="font-display text-3xl font-semibold text-green-ink">Check your phone</h1>
         <p className="text-sm text-ink-2">
-          We sent an M-Pesa prompt to {phone}. Enter your PIN to pay {formatKES(subtotal + deliveryFee)}.
+          We sent an M-Pesa prompt to {phone}. Enter your PIN to pay the {formatKES(deposit)} deposit.
         </p>
       </div>
     )
@@ -271,26 +274,32 @@ export function Checkout() {
 
         <section className="space-y-4 rounded-3xl border border-line bg-surface p-5 shadow-card">
           <h2 className="eyebrow">2 · Delivery</h2>
-          <div role="radiogroup" aria-label="Delivery" className="grid grid-cols-2 gap-2">
+          <div role="radiogroup" aria-label="Where should we deliver?" aria-required="true" className="grid grid-cols-2 gap-2">
             {(
               [
-                ['SHIPPING', 'Courier delivery', formatKES(state.settings.defaultShippingFee)],
-                ['HAND_DELIVERY', 'Hand delivery', 'Free · Nairobi'],
+                ['HAND_DELIVERY', 'Within Nairobi'],
+                ['SHIPPING', 'Outside Nairobi'],
               ] as const
-            ).map(([value, title, detail]) => (
+            ).map(([value, title]) => (
               <button
                 key={value}
                 type="button"
                 role="radio"
                 aria-checked={method === value}
                 onClick={() => setMethod(value)}
-                className={cx('rounded-2xl border p-3 text-left', method === value ? 'border-green bg-green-wash' : 'border-line-strong hover:bg-surface-2')}
+                className={cx(
+                  'flex items-center gap-2.5 rounded-2xl border p-3 text-left',
+                  method === value ? 'border-green bg-green-wash' : error && !method ? 'border-red-ink/60' : 'border-line-strong hover:bg-surface-2',
+                )}
               >
-                <div className="text-sm font-semibold">{title}</div>
-                <div className="text-xs text-muted">{detail}</div>
+                <span className={cx('flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2', method === value ? 'border-green' : 'border-line-strong')} aria-hidden>
+                  {method === value && <span className="h-2 w-2 rounded-full bg-green" />}
+                </span>
+                <span className="text-sm font-semibold">{title}</span>
               </button>
             ))}
           </div>
+          <p className="text-xs text-muted">We confirm the delivery fee when your order is ready, and add it to the final payment.</p>
           <Field label="Deliver to">
             <input id="checkout-address" className={inputClass} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Estate / building, area, town" autoComplete="street-address" />
           </Field>
@@ -315,13 +324,17 @@ export function Checkout() {
               </li>
             )
           })}
-          <li className="flex justify-between text-ink-2">
-            <span>Delivery</span>
-            <span>{deliveryFee ? formatKES(deliveryFee) : 'Free'}</span>
+          <li className="flex justify-between border-t border-line pt-2 font-medium">
+            <span>Bouquets</span>
+            <span>{formatKES(subtotal)}</span>
           </li>
-          <li className="flex justify-between border-t border-line pt-2 text-base font-semibold">
-            <span>Total</span>
-            <span>{formatKES(subtotal + deliveryFee)}</span>
+          <li className="flex justify-between text-base font-semibold text-green-ink">
+            <span>Pay now · 50% deposit</span>
+            <span>{formatKES(deposit)}</span>
+          </li>
+          <li className="flex justify-between text-ink-2">
+            <span>When it’s ready</span>
+            <span>{formatKES(subtotal - deposit)} + delivery</span>
           </li>
         </ul>
         {error && <p className="text-sm font-medium text-red-ink">{error}</p>}
@@ -333,25 +346,13 @@ export function Checkout() {
             const problem = check()
             setError(problem)
             if (problem) return
-            if (LIVE) place(true)
+            if (LIVE) place()
             else setPaying(true)
           }}
         >
-          <Smartphone size={18} aria-hidden /> {busy ? 'Placing your order…' : payLabel(subtotal + deliveryFee)}
+          <Smartphone size={18} aria-hidden /> {busy ? 'Placing your order…' : payLabel(deposit, 'DEPOSIT')}
         </Button>
-        <Button
-          variant="ghost"
-          className="w-full"
-          disabled={busy}
-          onClick={() => {
-            const problem = check()
-            setError(problem)
-            if (!problem) place(false)
-          }}
-        >
-          Place order, pay later
-        </Button>
-        <p className="text-center text-xs text-muted">Paying later? We’ll send you a payment link.</p>
+        <p className="text-center text-xs text-muted">We start making your bouquet once the deposit is paid. The deposit is non-refundable.</p>
       </aside>
     </div>
   )
@@ -401,7 +402,14 @@ export function Thanks({ orderId }: { orderId: string }) {
         <h1 className="font-display text-4xl font-semibold text-green-ink">{owner?.name.split(' ')[0] ?? 'friend'}!</h1>
         <HeartDivider className="mx-auto mt-3 w-48" />
         <p className="mt-3 text-ink-2">
-          Order <strong className="text-ink">{order.number}</strong> is in. {order.payment.status === 'PAID' ? 'It’s paid and in the queue.' : 'We’ll start as soon as it’s paid.'}
+          Order <strong className="text-ink">{order.number}</strong> is in.{' '}
+          {order.status === 'PENDING_PAYMENT'
+            ? 'We’ll start as soon as the deposit is paid.'
+            : order.status === 'READY'
+              ? 'It’s ready!'
+              : order.status === 'SHIPPED'
+                ? 'It’s on its way.'
+                : 'Your deposit is paid and it’s in the queue. We’ll message you when it’s ready.'}
         </p>
       </div>
 
@@ -416,10 +424,11 @@ export function Thanks({ orderId }: { orderId: string }) {
         </div>
         <OrderTracker order={order} />
         <p className="text-sm text-ink-2">
-          {order.fulfilment.method === 'HAND_DELIVERY' ? 'Hand delivery to ' : 'Courier to '}
+          {DELIVERY_LABEL[order.fulfilment.method]} · 
           {order.fulfilment.address}
         </p>
-        {order.status === 'PENDING_PAYMENT' && <PayButton order={order} size="md" />}
+        <PaymentSummary order={order} />
+        {amountDue(order) > 0 && <PayButton order={order} size="md" />}
       </section>
 
       {saved ? (

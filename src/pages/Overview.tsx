@@ -25,7 +25,8 @@ export function Overview() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   const unread = unreadTotals(state.threads)
   const count = (s: OrderStatus) => state.orders.filter((o) => o.status === s).length
-  const orders = sortNewestFirst(filter === 'ALL' ? state.orders : state.orders.filter((o) => o.status === filter)).slice(0, 10)
+  // Orders count once the deposit is paid; unpaid ones have their own tab.
+  const orders = sortNewestFirst(filter === 'ALL' ? state.orders.filter((o) => o.status !== 'PENDING_PAYMENT') : state.orders.filter((o) => o.status === filter)).slice(0, 10)
 
   const since = range === 'ALL' ? undefined : new Date(now.getTime() - Number(range) * 86_400_000)
   const firstCustomer = state.customers.reduce((min, c) => (c.createdAt < min ? c.createdAt : min), now.toISOString())
@@ -69,7 +70,7 @@ export function Overview() {
           icon={ShoppingBag}
           label="Orders today"
           value={formatNumber(today.length)}
-          detail={`${count('PENDING_PAYMENT')} awaiting payment · ${count('PENDING')} to start`}
+          detail={`${count('PENDING')} to start · ${count('READY')} ready · ${count('PENDING_PAYMENT')} awaiting deposit`}
           href="#/admin/orders"
         />
         <Kpi icon={Wallet} label="Total revenue (KES)" value={formatKES(totalRevenue(state.orders))} detail={`${formatKES(revenueSince(state.orders, monthStart))} this month`} />
@@ -100,11 +101,12 @@ export function Overview() {
               value={filter}
               onChange={setFilter}
               options={[
-                { value: 'ALL', label: 'All' },
-                { value: 'PENDING_PAYMENT', label: 'Awaiting payment', count: count('PENDING_PAYMENT') },
+                { value: 'ALL', label: 'All paid' },
                 { value: 'PENDING', label: 'Pending', count: count('PENDING') },
                 { value: 'PROCESSING', label: 'Processing', count: count('PROCESSING') },
+                { value: 'READY', label: 'Ready', count: count('READY') },
                 { value: 'SHIPPED', label: 'Shipped', count: count('SHIPPED') },
+                { value: 'PENDING_PAYMENT', label: 'Awaiting deposit', count: count('PENDING_PAYMENT') },
               ]}
             />
           </div>

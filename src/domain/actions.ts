@@ -1,6 +1,6 @@
 import { feeSummary } from './fees'
 import { formatKES } from './format'
-import { canTransition, earnsServiceFee, orderTotal, refundAmountFor, STATUS_LABEL } from './orders'
+import { amountDue, amountPaid, canTransition, depositFor, earnsServiceFee, itemsSubtotal, orderTotal, paymentRecords, paymentStage, refundAmountFor, STATUS_LABEL } from './orders'
 import type {
   AppState,
   Channel,
@@ -29,9 +29,10 @@ export interface OrderDraft {
   threadId?: string
   items: { productId: string; qty: number }[]
   customisation: string
+  /** HAND_DELIVERY = within Nairobi, SHIPPING = outside Nairobi. The fee is set when the order is ready. */
   method: FulfilmentMethod
   address: string
-  deliveryFee?: number
+  /** SEND_LINK sends the deposit link; PAID records a deposit already received (cash or M-Pesa to her number). */
   payment: { kind: 'SEND_LINK' } | { kind: 'UNPAID' } | { kind: 'PAID'; method: PaymentMethod; reference: string }
 }
 
@@ -39,7 +40,10 @@ export type Action =
   | { type: 'SET_STATUS'; orderId: string; status: OrderStatus; courier?: string; trackingNumber?: string }
   | { type: 'REFUND_ORDER'; orderId: string }
   | { type: 'SEND_PAYMENT_LINK'; orderId: string }
+  /** Records a payment made outside Paystack (cash, M-Pesa to her number) for whatever is due now. */
   | { type: 'CONFIRM_PAYMENT'; orderId: string; method: PaymentMethod; reference: string }
+  /** The bouquet is made: set the delivery fee and ask for the balance (remaining 50% + delivery). */
+  | { type: 'ORDER_READY'; orderId: string; deliveryFee: number }
   | { type: 'CREATE_ORDER'; draft: OrderDraft }
   | { type: 'SET_THREAD_READ'; threadId: string; read: boolean }
   | { type: 'SEND_MESSAGE'; threadId: string; text: string }
@@ -192,6 +196,8 @@ function run(tx: Tx, action: Action): string | undefined {
       return sendPaymentLink(tx, action.orderId)
     case 'CONFIRM_PAYMENT':
       return confirmPayment(tx, action.orderId, action.method, action.reference)
+    case 'ORDER_READY':
+      return orderReady(tx, action.orderId, action.deliveryFee)
     case 'CREATE_ORDER':
       return createOrder(tx, action.draft)
     case 'SET_THREAD_READ': {
@@ -309,6 +315,7 @@ function run(tx: Tx, action: Action): string | undefined {
     case 'CUSTOMER_PAY': {
       const order = tx.order(action.orderId)
       if (action.customerId && order?.customerId !== action.customerId) return 'Order not found.'
+      // Demo only: the browser can't send this in live mode, where Paystack confirms payments.
       return confirmPayment(tx, action.orderId, 'MPESA', action.reference)
     }
     case 'CUSTOMER_PLACE_ORDER': {
@@ -318,7 +325,8 @@ function run(tx: Tx, action: Action): string | undefined {
         const customer = tx.state.customers.find((c) => c.id === action.draft.customerId)
         if (!customer) return 'Your account wasn’t found. Please sign in again.'
       }
-      return createOrder(tx, action.draft)
+      // Customers always pay the deposit through the payment step, never by saying it's paid.
+      return createOrder(tx, { ...action.draft, payment: { kind: 'UNPAID' } })
     }
     case 'CUSTOMER_LINK_ACCOUNT':
       return linkAccount(tx, action)
@@ -326,9 +334,10 @@ function run(tx: Tx, action: Action): string | undefined {
       const order = tx.order(action.orderId)
       if (!order) return 'Order not found.'
       // Paystack can report the same payment more than once.
-      if (order.payment.status !== 'UNPAID') return order.payment.reference === action.reference.toUpperCase() ? undefined : 'This order is already paid.'
-      if (order.status !== 'PENDING_PAYMENT') return `Payment received for ${order.number}, but the order is ${STATUS_LABEL[order.status].toLowerCase()}. Refund it in Paystack.`
-      if (action.amount !== orderTotal(order)) return `Paid ${formatKES(action.amount)} but ${order.number} costs ${formatKES(orderTotal(order))}.`
+      if (paymentRecords(order).some((p) => p.reference === action.reference.toUpperCase())) return
+      const due = amountDue(order)
+      if (due === 0) return `Payment received for ${order.number}, but nothing is due (${STATUS_LABEL[order.status].toLowerCase()}). Refund it in Paystack.`
+      if (action.amount !== due) return `Paid ${formatKES(action.amount)} but ${formatKES(due)} is due on ${order.number}.`
       return confirmPayment(tx, order.id, action.method, action.reference)
     }
     case 'CUSTOMER_UPDATE_PROFILE': {
@@ -445,7 +454,7 @@ function describeSettingsChange(patch: Partial<Settings>): string {
   if (patch.feeOnHandDelivery !== undefined) {
     parts.push(patch.feeOnHandDelivery ? 'fee applies to hand delivery' : 'no fee on hand delivery')
   }
-  if (patch.defaultShippingFee !== undefined) parts.push(`courier delivery fee ${formatKES(patch.defaultShippingFee)}`)
+  if (patch.defaultShippingFee !== undefined) parts.push(`usual delivery fee outside Nairobi ${formatKES(patch.defaultShippingFee)}`)
   if (patch.payoutSchedule !== undefined) parts.push(`${patch.payoutSchedule.toLowerCase()} payouts`)
   return parts.join(', ') || 'no changes'
 }
@@ -455,11 +464,14 @@ function setStatus(tx: Tx, orderId: string, to: OrderStatus, courier?: string, t
   if (!order) return 'Order not found.'
   if (order.status === to) return
   if (to === 'REFUNDED') return refundOrder(tx, orderId)
+  if (to === 'READY') return 'Use “Order ready” to set the delivery fee.'
   if (!canTransition(order.status, to)) {
     if (order.status === 'SHIPPED') return 'Shipped orders are final. Use Refund if the customer returns it.'
-    if (order.status === 'PENDING_PAYMENT') return 'Confirm the payment first.'
+    if (order.status === 'PENDING_PAYMENT') return 'Waiting for the deposit.'
+    if (to === 'SHIPPED') return 'Mark the order ready first, so the customer can pay the balance.'
     return `Can’t move an order from ${STATUS_LABEL[order.status]} to ${STATUS_LABEL[to]}.`
   }
+  if (to === 'SHIPPED' && amountDue(order) > 0) return `Waiting for the balance of ${formatKES(amountDue(order))}.`
 
   let next: Order = {
     ...order,
@@ -476,10 +488,14 @@ function setStatus(tx: Tx, orderId: string, to: OrderStatus, courier?: string, t
     consumeMaterials(tx, next, +1)
     next = { ...next, materialsDeducted: false }
   }
-  if (to === 'CANCELLED' && order.payment.status === 'PAID') {
-    // Not shipped yet, so the customer gets everything back. Materials already used stay used.
-    next = { ...next, payment: { ...next.payment, status: 'REFUNDED', refundedAmount: refundAmountFor(order) } }
-    tx.notices.push(`Refund ${formatKES(refundAmountFor(order))} to the customer.`)
+  if (to === 'CANCELLED' && amountPaid(order) > 0) {
+    // Not shipped yet: everything paid comes back except the deposit, which is never refundable.
+    // Materials already used stay used.
+    const refund = refundAmountFor(order)
+    const kept = amountPaid(order) - refund
+    next = { ...next, payment: { ...next.payment, records: paymentRecords(order), ...(refund > 0 ? { status: 'REFUNDED' as const, refundedAmount: refund } : {}) } }
+    if (kept > 0) tx.notices.push(`The ${formatKES(kept)} deposit is kept (non-refundable).`)
+    if (refund > 0) tx.notices.push(`Refund ${formatKES(refund)} to the customer.`)
   }
   if (to === 'SHIPPED') {
     next = {
@@ -547,9 +563,13 @@ function refundOrder(tx: Tx, orderId: string) {
 function sendPaymentLink(tx: Tx, orderId: string) {
   const order = tx.order(orderId)
   if (!order) return 'Order not found.'
-  if (order.status !== 'PENDING_PAYMENT') return 'This order is already paid.'
+  const stage = paymentStage(order)
+  if (!stage) return 'Nothing is due on this order right now.'
   tx.putOrder({ ...order, payment: { ...order.payment, linkSentAt: tx.at } })
-  const text = `Here’s your payment link for order ${order.number} (${formatKES(orderTotal(order))}). Tap below to pay with M-Pesa 💳`
+  const text =
+    stage === 'DEPOSIT'
+      ? `Here’s the link to pay the 50% deposit for order ${order.number} (${formatKES(amountDue(order))}). We start making it as soon as it’s paid 💳`
+      : `Here’s the link to pay the balance for order ${order.number} (${formatKES(amountDue(order))}). Tap below to pay with M-Pesa or card 💳`
   if (order.threadId) {
     tx.postToThread(order.threadId, 'SHOP', text, { kind: 'PAYMENT_LINK', orderId: order.id })
     tx.notices.push('Payment link sent in the chat.')
@@ -559,20 +579,79 @@ function sendPaymentLink(tx: Tx, orderId: string) {
   tx.audit(`${order.number}: payment link sent`)
 }
 
+/** Records whatever is due now: the deposit (the order joins the queue) or the balance (it can be sent). */
 function confirmPayment(tx: Tx, orderId: string, method: PaymentMethod, reference: string) {
   const order = tx.order(orderId)
   if (!order) return 'Order not found.'
-  if (order.status !== 'PENDING_PAYMENT') return 'This order isn’t waiting for payment.'
+  const stage = paymentStage(order)
+  if (!stage) return 'Nothing is due on this order right now.'
   if (!reference.trim()) return 'Add the payment reference.'
-  const next: Order = {
-    ...order,
-    status: 'PENDING',
-    payment: { ...order.payment, status: 'PAID', method, reference: reference.trim().toUpperCase(), paidAt: tx.at },
-    history: [...order.history, { status: 'PENDING', at: tx.at, by: tx.actor, note: 'Payment confirmed' }],
+  const ref = reference.trim().toUpperCase()
+  const amount = amountDue(order)
+  const records = [...paymentRecords(order), { kind: stage, amount, method, reference: ref, at: tx.at }]
+  const payment = { ...order.payment, records, method, reference: ref, paidAt: tx.at }
+  const via = method === 'MPESA' ? 'M-Pesa' : 'Card'
+  if (stage === 'DEPOSIT') {
+    tx.putOrder({
+      ...order,
+      status: 'PENDING',
+      payment: { ...payment, status: 'DEPOSIT_PAID' },
+      history: [...order.history, { status: 'PENDING', at: tx.at, by: tx.actor, note: `Deposit of ${formatKES(amount)} paid` }],
+    })
+    tx.postToThread(order.threadId, 'SYSTEM', `Deposit received for ${order.number} · ${via} ${ref}`)
+    tx.audit(`${order.number}: deposit of ${formatKES(amount)} received (${ref})`)
+  } else {
+    tx.putOrder({
+      ...order,
+      payment: { ...payment, status: 'PAID' },
+      history: [...order.history, { status: order.status, at: tx.at, by: tx.actor, note: `Balance of ${formatKES(amount)} paid` }],
+    })
+    tx.postToThread(order.threadId, 'SYSTEM', `Balance received for ${order.number} · ${via} ${ref}. Fully paid 🌸`)
+    tx.audit(`${order.number}: balance of ${formatKES(amount)} received (${ref})`)
+    tx.notices.push(`${order.number} is fully paid and can be sent.`)
   }
+}
+
+/**
+ * The bouquet is made. Sets the delivery fee and asks for the balance: the rest of the bouquet
+ * price plus delivery. The customer sees "Pay balance" in their account and chat; the dashboard
+ * also offers a WhatsApp message.
+ */
+function orderReady(tx: Tx, orderId: string, deliveryFee: number) {
+  const order = tx.order(orderId)
+  if (!order) return 'Order not found.'
+  if (!Number.isInteger(deliveryFee) || deliveryFee < 0) return 'Enter the delivery fee as a whole KES amount (0 if free).'
+  const refix = order.status === 'READY' && amountDue(order) > 0
+  if (!['PENDING', 'PROCESSING'].includes(order.status) && !refix) {
+    if (order.status === 'PENDING_PAYMENT') return 'Waiting for the deposit.'
+    return `${order.number} is ${STATUS_LABEL[order.status].toLowerCase()}.`
+  }
+  // Fix what's been paid before the total changes (older orders worked it out from the total).
+  let next: Order = {
+    ...order,
+    status: 'READY',
+    readyAt: tx.at,
+    fulfilment: { ...order.fulfilment, deliveryFee },
+    payment: { ...order.payment, records: paymentRecords(order) },
+    history: refix ? order.history : [...order.history, { status: 'READY', at: tx.at, by: tx.actor, note: `Ready · delivery ${formatKES(deliveryFee)}` }],
+  }
+  if (!order.materialsDeducted) {
+    // Made without going through Processing: the materials were still used.
+    consumeMaterials(tx, next, -1)
+    next = { ...next, materialsDeducted: true }
+  }
+  const balance = amountDue(next)
+  if (balance === 0) next = { ...next, payment: { ...next.payment, status: 'PAID' } }
   tx.putOrder(next)
-  tx.postToThread(order.threadId, 'SYSTEM', `Payment received for ${order.number} · ${method === 'MPESA' ? 'M-Pesa' : 'Card'} ${next.payment.reference}`)
-  tx.audit(`${order.number}: payment of ${formatKES(orderTotal(order))} confirmed (${next.payment.reference})`)
+  tx.audit(`${order.number}: ready, delivery ${formatKES(deliveryFee)}, balance ${formatKES(balance)}`)
+
+  const rest = Math.max(0, itemsSubtotal(next) - amountPaid(next))
+  const text =
+    balance > 0
+      ? `Your order ${order.number} is ready 🌸 Balance to pay: ${formatKES(balance)} (${formatKES(rest)} remaining + ${formatKES(deliveryFee)} delivery). Tap below to pay, and we’ll send it your way.`
+      : `Your order ${order.number} is ready and fully paid 🌸 We’ll send it your way shortly.`
+  tx.postToThread(order.threadId, 'SHOP', text, balance > 0 ? { kind: 'PAYMENT_LINK', orderId: order.id } : {})
+  tx.notices.push(balance > 0 ? `${order.number} is ready. Balance due: ${formatKES(balance)}.` : `${order.number} is ready and fully paid.`)
 }
 
 function createOrder(tx: Tx, draft: OrderDraft) {
@@ -585,14 +664,11 @@ function createOrder(tx: Tx, draft: OrderDraft) {
     if (!product) return 'Unknown product.'
     if (product.hidden) return `${product.name} is no longer available.`
   }
-  if (!draft.address.trim()) {
-    return draft.method === 'SHIPPING' ? 'Add the delivery address.' : 'Add where to hand-deliver.'
-  }
+  if (!draft.address.trim()) return 'Add the delivery address.'
   if (draft.payment.kind === 'PAID' && !draft.payment.reference.trim()) return 'Add the payment reference.'
 
   const actor = tx.actor
   const customerId = upsertCustomer(tx, draft)
-  const paid = draft.payment.kind === 'PAID'
   const number = `WB-${tx.state.nextOrderNumber}`
   const thread = tx.thread(draft.threadId)
   const order: Order = {
@@ -607,27 +683,21 @@ function createOrder(tx: Tx, draft: OrderDraft) {
       unitPrice: tx.state.products.find((p) => p.id === i.productId)!.price,
     })),
     customisation: draft.customisation.trim(),
-    fulfilment: {
-      method: draft.method,
-      address: draft.address.trim(),
-      // Hand delivery is free for the customer.
-      deliveryFee: draft.method === 'HAND_DELIVERY' ? 0 : (draft.deliveryFee ?? tx.state.settings.defaultShippingFee),
-    },
-    payment:
-      draft.payment.kind === 'PAID'
-        ? { status: 'PAID', method: draft.payment.method, reference: draft.payment.reference.trim().toUpperCase(), paidAt: tx.at }
-        : { status: 'UNPAID' },
-    status: paid ? 'PENDING' : 'PENDING_PAYMENT',
+    // The delivery fee is set when the order is ready.
+    fulfilment: { method: draft.method, address: draft.address.trim(), deliveryFee: 0 },
+    payment: { status: 'UNPAID', records: [] },
+    status: 'PENDING_PAYMENT',
     createdAt: tx.at,
-    history: [{ status: paid ? 'PENDING' : 'PENDING_PAYMENT', at: tx.at, by: actor }],
+    history: [{ status: 'PENDING_PAYMENT', at: tx.at, by: actor }],
     materialsDeducted: false,
   }
   tx.state = { ...tx.state, orders: [order, ...tx.state.orders], nextOrderNumber: tx.state.nextOrderNumber + 1 }
   tx.createdOrderId = order.id
   const via = { WEB_FORM: 'web form', PORTAL: 'client portal', LIVE_CHAT: 'live chat', MANUAL: 'phone / in person' }[order.channel]
-  tx.audit(`${number}: created from ${via} for ${draft.customerName.trim()} (${formatKES(orderTotal(order))})`, actor)
+  tx.audit(`${number}: created from ${via} for ${draft.customerName.trim()} (${formatKES(orderTotal(order))}, deposit ${formatKES(depositFor(order))})`, actor)
   tx.notices.push(`Order ${number} created.`)
   if (draft.payment.kind === 'SEND_LINK') sendPaymentLink(tx, order.id)
+  if (draft.payment.kind === 'PAID') return confirmPayment(tx, order.id, draft.payment.method, draft.payment.reference)
 }
 
 function upsertCustomer(tx: Tx, draft: OrderDraft): string {

@@ -3,9 +3,9 @@ import { applyAction, AUTO_REPLY, type Action, type OrderDraft } from './actions
 import { parseStaffList, staffRoleFor } from './auth'
 import { DEFAULT_SETTINGS, MATERIALS, PRODUCTS, RECIPES, USERS } from './catalog'
 import { feeSummary } from './fees'
-import { netRevenue } from './orders'
+import { amountDue, amountPaid, netRevenue, orderTotal } from './orders'
 import { createSeedState } from './seed'
-import type { AppState } from './types'
+import type { AppState, Order } from './types'
 
 const NOW = new Date('2026-10-09T12:00:00+03:00')
 const SIGN_IN_PARTNER: Action = { type: 'SIGN_IN_STAFF', email: 'Partner@Example.com', name: 'Partner', role: 'SUPER_ADMIN' }
@@ -71,8 +71,11 @@ function createPaidOrder(state: AppState, overrides: Partial<OrderDraft> = {}) {
   return { state: result.state, orderId: result.createdOrderId! }
 }
 
+/** Made, marked ready with a KES 300 delivery fee, balance paid, then sent. */
 const ship = (orderId: string): Action[] => [
   { type: 'SET_STATUS', orderId, status: 'PROCESSING' },
+  { type: 'ORDER_READY', orderId, deliveryFee: 300 },
+  { type: 'CONFIRM_PAYMENT', orderId, method: 'MPESA', reference: 'BAL123' },
   { type: 'SET_STATUS', orderId, status: 'SHIPPED', courier: 'G4S', trackingNumber: 'G4S-123' },
 ]
 
@@ -84,17 +87,19 @@ describe('creating orders', () => {
     expect(order.status).toBe('PENDING')
     expect(order.channel).toBe('LIVE_CHAT')
     expect(order.threadId).toBe('t-1')
-    expect(order.fulfilment.deliveryFee).toBe(DEFAULT_SETTINGS.defaultShippingFee)
+    expect(order.fulfilment.deliveryFee).toBe(0)
     expect(order.payment.reference).toBe('SJK7H2L9QX')
+    expect(order.payment.records).toEqual([{ kind: 'DEPOSIT', amount: 1750, method: 'MPESA', reference: 'SJK7H2L9QX', at: NOW.toISOString() }])
     expect(state.customers).toHaveLength(1)
     expect(state.nextOrderNumber).toBe(1002)
   })
 
-  it('charges nothing for hand delivery', () => {
-    const { state, orderId } = createPaidOrder(emptyState(), { method: 'HAND_DELIVERY', deliveryFee: 500 })
+  it('takes a 50% deposit and leaves the delivery fee until the order is ready', () => {
+    const { state, orderId } = createPaidOrder(emptyState(), { method: 'HAND_DELIVERY' })
     const order = state.orders.find((o) => o.id === orderId)!
     expect(order.fulfilment.deliveryFee).toBe(0)
-    expect(netRevenue(order)).toBe(3500)
+    expect(order.payment.status).toBe('DEPOSIT_PAID')
+    expect(netRevenue(order)).toBe(1750)
   })
 
   it('reuses an existing customer matched by handle', () => {
@@ -122,12 +127,82 @@ describe('creating orders', () => {
 })
 
 describe('payment', () => {
-  it('moves an order from awaiting payment to pending once paid', () => {
+  it('moves an order from awaiting deposit to pending once the deposit is paid', () => {
     const created = createPaidOrder(emptyState(), { payment: { kind: 'UNPAID' } })
+    expect(amountDue(created.state.orders[0])).toBe(1750)
     const state = apply(created.state, { type: 'CONFIRM_PAYMENT', orderId: created.orderId, method: 'MPESA', reference: 'SAB123' })
     const order = state.orders[0]
     expect(order.status).toBe('PENDING')
+    expect(order.payment.status).toBe('DEPOSIT_PAID')
+    expect(amountPaid(order)).toBe(1750)
+    expect(amountDue(order)).toBe(0)
+  })
+
+  it('rounds an odd deposit up to a whole shilling', () => {
+    const created = createPaidOrder(emptyState(), { payment: { kind: 'UNPAID' }, items: [{ productId: 'p-pink-lily', qty: 1 }, { productId: 'p-rosebud-box', qty: 1 }] })
+    // 3,500 + 1,800 = 5,300 → 2,650; with an odd total it rounds up.
+    expect(amountDue(created.state.orders[0])).toBe(2650)
+    const odd = { ...created.state.orders[0], items: [{ productId: 'x', qty: 1, unitPrice: 4001 }] }
+    expect(amountDue(odd)).toBe(2001)
+  })
+
+  it('asks for the rest plus delivery when the order is ready, and only ships once that is paid', () => {
+    const created = createPaidOrder(emptyState())
+    let state = apply(created.state, { type: 'SET_STATUS', orderId: created.orderId, status: 'PROCESSING' })
+    // Ready can't be set without a delivery fee, and shipping waits for "ready".
+    expect(applyAction(state, { type: 'SET_STATUS', orderId: created.orderId, status: 'READY' }, NOW).ok).toBe(false)
+    expect(applyAction(state, { type: 'SET_STATUS', orderId: created.orderId, status: 'SHIPPED' }, NOW).ok).toBe(false)
+    expect(applyAction(state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: -5 }, NOW).ok).toBe(false)
+    const ready = applyAction(state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 450 }, NOW)
+    if (!ready.ok) throw new Error(ready.error)
+    state = ready.state
+    let order = state.orders[0]
+    expect(order.status).toBe('READY')
+    expect(order.fulfilment.deliveryFee).toBe(450)
+    expect(amountDue(order)).toBe(1750 + 450)
+    expect(ready.notices).toContain('WB-1001 is ready. Balance due: KES 2,200.')
+    // The customer gets the balance and a Pay button in their chat.
+    expect(state.threads[0].messages.at(-1)).toMatchObject({ kind: 'PAYMENT_LINK', orderId: created.orderId })
+    expect(state.threads[0].messages.at(-1)!.text).toContain('KES 2,200 (KES 1,750 remaining + KES 450 delivery)')
+    // Not paid yet: can't ship.
+    const early = applyAction(state, { type: 'SET_STATUS', orderId: created.orderId, status: 'SHIPPED' }, NOW)
+    expect(early.ok === false && early.error).toBe('Waiting for the balance of KES 2,200.')
+    // A payment for the wrong amount is refused; the right one completes it.
+    expect(applyAction(state, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'CARD', reference: 'ps_b', amount: 1750 }, NOW).ok).toBe(false)
+    state = apply(state, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'CARD', reference: 'ps_b', amount: 2200 })
+    order = state.orders[0]
     expect(order.payment.status).toBe('PAID')
+    expect(amountPaid(order)).toBe(3500 + 450)
+    expect(order.status).toBe('READY')
+    state = apply(state, { type: 'SET_STATUS', orderId: created.orderId, status: 'SHIPPED' })
+    expect(state.orders[0].status).toBe('SHIPPED')
+    expect(state.fees).toHaveLength(1)
+  })
+
+  it('marks an order ready straight from pending, using its materials', () => {
+    const created = createPaidOrder(emptyState())
+    const state = apply(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 0 })
+    expect(state.orders[0].status).toBe('READY')
+    expect(state.orders[0].materialsDeducted).toBe(true)
+    expect(state.movements.length).toBeGreaterThan(0)
+  })
+
+  it('lets her fix the delivery fee while the balance is unpaid', () => {
+    const created = createPaidOrder(emptyState())
+    let state = apply(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300 })
+    state = apply(state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 500 })
+    expect(amountDue(state.orders[0])).toBe(1750 + 500)
+  })
+
+  it('counts an older order paid in full before deposits existed', () => {
+    const created = createPaidOrder(emptyState())
+    const legacy: Order = { ...created.state.orders[0], payment: { status: 'PAID', method: 'MPESA', reference: 'OLD1', paidAt: NOW.toISOString() }, fulfilment: { ...created.state.orders[0].fulfilment, deliveryFee: 300 } }
+    let state: AppState = { ...created.state, orders: [legacy] }
+    expect(amountPaid(legacy)).toBe(3800)
+    // Ready with the same delivery fee: nothing more to pay.
+    state = apply(state, { type: 'ORDER_READY', orderId: legacy.id, deliveryFee: 300 })
+    expect(state.orders[0].payment.status).toBe('PAID')
+    expect(amountDue(state.orders[0])).toBe(0)
   })
 
   it('cannot skip payment by toggling the status', () => {
@@ -172,11 +247,30 @@ describe('service fee', () => {
     expect(state.fees).toHaveLength(1)
   })
 
-  it('refunds everything when an order is cancelled before shipping, with no fee', () => {
+  it('keeps the deposit when an order is cancelled before shipping, with no fee', () => {
     const created = createPaidOrder(emptyState())
-    const state = apply(created.state, { type: 'SET_STATUS', orderId: created.orderId, status: 'CANCELLED' })
+    const result = applyAction(created.state, { type: 'SET_STATUS', orderId: created.orderId, status: 'CANCELLED' }, NOW)
+    if (!result.ok) throw new Error(result.error)
+    expect(netRevenue(result.state.orders[0])).toBe(1750)
+    expect(result.state.orders[0].payment.refundedAmount).toBeUndefined()
+    expect(result.notices).toContain('The KES 1,750 deposit is kept (non-refundable).')
+    expect(result.state.fees).toHaveLength(0)
+  })
+
+  it('refunds the balance, but not the deposit, when a fully paid order is cancelled before it is sent', () => {
+    const created = createPaidOrder(emptyState())
+    let state = apply(created.state, { type: 'ORDER_READY', orderId: created.orderId, deliveryFee: 300 })
+    state = apply(state, { type: 'CONFIRM_PAYMENT', orderId: created.orderId, method: 'MPESA', reference: 'BAL1' })
+    state = apply(state, { type: 'SET_STATUS', orderId: created.orderId, status: 'CANCELLED' })
+    expect(state.orders[0].payment.refundedAmount).toBe(1750 + 300)
+    expect(netRevenue(state.orders[0])).toBe(1750)
+  })
+
+  it('refunds everything on an older order paid in full before deposits existed', () => {
+    const created = createPaidOrder(emptyState())
+    const legacy = { ...created.state.orders[0], payment: { status: 'PAID' as const, method: 'MPESA' as const, reference: 'OLD1', paidAt: NOW.toISOString() } }
+    const state = apply({ ...created.state, orders: [legacy] }, { type: 'SET_STATUS', orderId: legacy.id, status: 'CANCELLED' })
     expect(netRevenue(state.orders[0])).toBe(0)
-    expect(state.fees).toHaveLength(0)
   })
 
   it('charges hand-delivered orders unless the super admin turns that off', () => {
@@ -320,7 +414,7 @@ describe('live chat (customer side)', () => {
     const created = createPaidOrder(emptyState(), { payment: { kind: 'SEND_LINK' } })
     const state = apply(created.state, { type: 'CUSTOMER_PAY', orderId: created.orderId, reference: 'sab12cd34e' })
     const order = state.orders[0]
-    expect(order).toMatchObject({ status: 'PENDING', payment: { status: 'PAID', reference: 'SAB12CD34E' } })
+    expect(order).toMatchObject({ status: 'PENDING', payment: { status: 'DEPOSIT_PAID', reference: 'SAB12CD34E' } })
     expect(order.history.at(-1)!.by).toBe('customer')
     expect(state.threads[0].messages.at(-1)!.from).toBe('SYSTEM')
   })
@@ -435,11 +529,13 @@ describe('live-mode safeguards', () => {
     const created = createPaidOrder(emptyState(), { payment: { kind: 'UNPAID' } })
     const wrong = applyAction(created.state, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'MPESA', reference: 'ps_1', amount: 100 }, NOW)
     expect(wrong.ok).toBe(false)
-    const paid = apply(created.state, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'MPESA', reference: 'ps_1', amount: 3800 })
-    expect(paid.orders[0]).toMatchObject({ status: 'PENDING', payment: { status: 'PAID', reference: 'PS_1' } })
+    // The full total isn't what's due: only the 50% deposit is.
+    expect(applyAction(created.state, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'MPESA', reference: 'ps_1', amount: 3500 }, NOW).ok).toBe(false)
+    const paid = apply(created.state, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'MPESA', reference: 'ps_1', amount: 1750 })
+    expect(paid.orders[0]).toMatchObject({ status: 'PENDING', payment: { status: 'DEPOSIT_PAID', reference: 'PS_1' } })
     expect(paid.orders[0].history.at(-1)!.by).toBe('paystack')
     // The same notification again changes nothing.
-    const again = applyAction(paid, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'MPESA', reference: 'ps_1', amount: 3800 }, NOW)
+    const again = applyAction(paid, { type: 'PAYMENT_RECEIVED', orderId: created.orderId, method: 'MPESA', reference: 'ps_1', amount: 1750 }, NOW)
     expect(again.ok && again.state.orders).toEqual(paid.orders)
   })
 
@@ -476,7 +572,9 @@ describe('seed data', () => {
       expect(state.customers.some((c) => c.id === order.customerId)).toBe(true)
       expect(new Date(order.createdAt).getTime()).toBeLessThanOrEqual(NOW.getTime())
       for (const h of order.history) expect(new Date(h.at).getTime()).toBeLessThanOrEqual(NOW.getTime())
-      if (order.fulfilment.method === 'HAND_DELIVERY') expect(order.fulfilment.deliveryFee).toBe(0)
+      expect(Number.isInteger(order.fulfilment.deliveryFee) && order.fulfilment.deliveryFee >= 0).toBe(true)
+      // Nobody has paid more than the order costs.
+      expect(amountPaid(order)).toBeLessThanOrEqual(orderTotal(order))
     }
     const charged = state.orders.filter((o) => o.status === 'SHIPPED' || o.status === 'REFUNDED')
     expect(state.fees).toHaveLength(charged.length)
@@ -486,7 +584,7 @@ describe('seed data', () => {
     const unread = state.threads.flatMap((t) => t.messages).filter((m) => m.from === 'CUSTOMER' && !m.read)
     expect(unread).toHaveLength(5)
     const statuses = new Set(state.orders.map((o) => o.status))
-    for (const s of ['PENDING_PAYMENT', 'PENDING', 'PROCESSING', 'SHIPPED', 'REFUNDED', 'CANCELLED']) {
+    for (const s of ['PENDING_PAYMENT', 'PENDING', 'PROCESSING', 'READY', 'SHIPPED', 'REFUNDED', 'CANCELLED']) {
       expect(statuses.has(s as never)).toBe(true)
     }
     expect(feeSummary(state).payable).toBeGreaterThan(0)

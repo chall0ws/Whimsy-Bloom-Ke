@@ -95,6 +95,7 @@ const STATUS_STYLE: Record<OrderStatus, string> = {
   PENDING_PAYMENT: 'bg-taupe-wash text-taupe-ink',
   PENDING: 'bg-amber-wash text-amber-ink',
   PROCESSING: 'bg-pink-wash text-pink-ink',
+  READY: 'bg-green-wash text-green-ink ring-1 ring-green/40',
   SHIPPED: 'bg-green-wash text-green-ink',
   CANCELLED: 'bg-gray-wash text-gray-ink',
   REFUNDED: 'bg-red-wash text-red-ink',

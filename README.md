@@ -73,17 +73,19 @@ In demo mode, open the dashboard's **Live chat** page (`/#/admin/inbox`) in one 
 
 ## Business rules
 
-- **Order flow:** `Awaiting payment → Pending → Processing → Shipped`. Unshipped orders can be cancelled. Shipped orders can be refunded.
-- An order leaves *Awaiting payment* only when a payment is confirmed.
+- **Order flow:** `Awaiting deposit → Pending → Processing → Ready → Shipped`. Unshipped orders can be cancelled. Shipped orders can be refunded.
+- **50% deposit:** every order starts with a deposit of half the bouquet price (rounded up). It joins her work queue only once the deposit is paid. Checkout asks whether delivery is **within Nairobi** or **outside Nairobi**; there is no "pay later".
+- **Order ready:** she taps *Ready* and enters the delivery fee. The customer is asked for the **balance** (the other 50% + delivery): a WhatsApp message opens on her phone ready to send, and the customer gets a *Pay balance* button on their order page, in My account and in the chat.
+- **Shipping waits for the balance.** An order can be marked *Shipped* only once it's fully paid.
 - **Service fee:** KES 100 (configurable) is charged **once**, when an order is marked *Shipped*. One ledger line per order, never removed.
 - **Shipped is final.** A shipped order can't be moved back. If it's refunded, the customer gets the bouquet price back. The **delivery fee and service fee are non-refundable**.
-- Cancelling before shipping refunds the customer in full, and no service fee is charged.
-- **Hand delivery has no delivery cost.** Hand-delivered orders still earn the service fee. The super admin can switch that off in Settings.
+- **The deposit is non-refundable.** Cancelling before shipping keeps the deposit and refunds anything paid beyond it. No service fee is charged.
+- Orders delivered within Nairobi earn the service fee too; the super admin can switch that off in Settings.
 - **Live chat:** one conversation per customer, matched by phone number. While she's *Away*, a customer gets at most one automatic reply per hour. Orders created from a chat are tagged *Live chat*, and their payment link and shipping confirmation are posted in that chat.
 - **Payouts:** the admin records a payout with its M-Pesa code. The payable balance goes down once the **super admin** confirms receipt.
 - **Roles:** the *super admin* (platform partner) can do everything. The *admin* (shop owner) runs orders, messages, customers and stock, and records payouts. She can't change fees or settings, or confirm payouts. A Google account that isn't on the team can't open the dashboard.
 - **Customers** can only see, pay for and change their own orders and details. A guest order can be saved to an account only from the browser it was placed in (live, that browser holds a secret token for it). Customers never see team notes, tags or the service fee.
-- **Payments (live):** the server starts each Paystack payment for the order's real total and marks it paid only after checking with Paystack (from the payment window, or Paystack's signed webhook if the window was closed). The amount must match, and the same payment is never counted twice.
+- **Payments (live):** the server starts each Paystack payment for what's due now (the deposit, then the balance) and marks it paid only after checking with Paystack (from the payment window, or Paystack's signed webhook if the window was closed). The amount must match, and the same payment is never counted twice.
 - **Old links** keep working: `/#/portal` opens My account and `/#/order-form` opens the shop.
 
 The rules live in `src/domain/` as pure functions, covered by `src/domain/actions.test.ts`. The live server runs the very same functions.

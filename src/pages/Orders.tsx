@@ -19,7 +19,8 @@ export function Orders() {
   const next = nextUpOrder(state.orders)
 
   const count = (s: OrderStatus) => state.orders.filter((o) => o.status === s).length
-  const open: OrderStatus[] = ['PENDING_PAYMENT', 'PENDING', 'PROCESSING']
+  // Orders join the work queue once the deposit is paid; unpaid ones wait under "Awaiting deposit".
+  const open: OrderStatus[] = ['PENDING', 'PROCESSING', 'READY']
   const q = query.trim().toLowerCase()
   const orders = sortNewestFirst(
     state.orders.filter((o) => {
@@ -67,9 +68,10 @@ export function Orders() {
             onChange={setFilter}
             options={[
               { value: 'OPEN', label: 'Open', count: state.orders.filter((o) => open.includes(o.status)).length },
-              { value: 'PENDING_PAYMENT', label: 'Awaiting payment', count: count('PENDING_PAYMENT') },
+              { value: 'PENDING_PAYMENT', label: 'Awaiting deposit', count: count('PENDING_PAYMENT') },
               { value: 'PENDING', label: 'Pending', count: count('PENDING') },
               { value: 'PROCESSING', label: 'Processing', count: count('PROCESSING') },
+              { value: 'READY', label: 'Ready', count: count('READY') },
               { value: 'SHIPPED', label: 'Shipped', count: count('SHIPPED') },
               { value: 'ALL', label: 'All', count: state.orders.length },
             ]}

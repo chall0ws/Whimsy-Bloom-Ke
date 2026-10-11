@@ -1,30 +1,40 @@
-import { Ban, Clock, CreditCard, Lock, MapPin, MessageCircle, Plus, Send, Trash2, Truck, Undo2, UserRound } from 'lucide-react'
+import { Ban, CircleCheck, Clock, CreditCard, Lock, MapPin, MessageCircle, Plus, Send, Trash2, Truck, Undo2, UserRound } from 'lucide-react'
 import { useState } from 'react'
 import { LIVE } from '../config'
 import type { OrderDraft } from '../domain/actions'
 import { COURIERS, forSale } from '../domain/catalog'
 import { formatDate, formatDateTime, formatKES, relativeTime } from '../domain/format'
 import {
+  amountDue,
+  amountPaid,
+  DELIVERY_LABEL,
   earnsServiceFee,
   FLOW_STATUSES,
+  itemsSubtotal,
   nextUpOrder,
   orderSummary,
   orderTotal,
+  PAYMENT_LABEL,
+  paymentRecords,
+  paymentStage,
   productName,
   refundAmountFor,
   sourceLabel,
   STATUS_LABEL,
 } from '../domain/orders'
-import type { Channel, FulfilmentMethod, Order, PaymentMethod, Thread } from '../domain/types'
+import type { AppState, Channel, FulfilmentMethod, Order, PaymentMethod, Thread } from '../domain/types'
+import { readyMessage, whatsappLink, whatsappNumber } from '../domain/whatsapp'
 import { navigate } from '../router'
 import { userName, useStore } from '../state/store'
-import { Button, ChannelIcon, cx, EmptyState, Field, inputClass, Modal, Notice, StatusChip } from './ui'
+import { Button, ChannelIcon, cx, EmptyState, Field, inputClass, Modal, Notice, StatusChip, useDialog } from './ui'
 
-/** The PENDING / PROCESSING / SHIPPED toggle used in every order list. */
+/** The Pending / Processing / Ready / Shipped toggle used in every order list. */
 export function StatusControl({ order, size = 'md' }: { order: Order; size?: 'sm' | 'md' }) {
   const { dispatch } = useStore()
   const [shipping, setShipping] = useState(false)
   const [paying, setPaying] = useState(false)
+  const ready = useDialog()
+  const due = amountDue(order)
 
   if (order.status === 'CANCELLED' || order.status === 'REFUNDED') return <StatusChip status={order.status} />
 
@@ -33,7 +43,7 @@ export function StatusControl({ order, size = 'md' }: { order: Order; size?: 'sm
       <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
         <StatusChip status="PENDING_PAYMENT" />
         <Button size="sm" variant="secondary" onClick={() => setPaying(true)}>
-          <CreditCard size={13} aria-hidden /> Mark paid
+          <CreditCard size={13} aria-hidden /> Deposit {formatKES(due)}
         </Button>
         <PaymentDialog order={order} open={paying} onClose={() => setPaying(false)} />
       </div>
@@ -42,20 +52,24 @@ export function StatusControl({ order, size = 'md' }: { order: Order; size?: 'sm
 
   const shipped = order.status === 'SHIPPED'
   return (
-    <div onClick={(e) => e.stopPropagation()}>
+    <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
       <div role="group" aria-label={`Status of ${order.number}`} className="inline-flex rounded-full border border-line bg-surface-2 p-0.5">
         {FLOW_STATUSES.map((s) => {
           const active = order.status === s
+          // Shipping waits for the balance; nothing moves once shipped.
+          const blocked = (shipped && !active) || (s === 'SHIPPED' && !active && (order.status !== 'READY' || due > 0))
+          const why = shipped ? 'Shipped orders are final' : order.status !== 'READY' ? 'Mark it ready first' : `Waiting for the ${formatKES(due)} balance`
           return (
             <button
               key={s}
               type="button"
               aria-pressed={active}
-              disabled={shipped && !active}
-              title={shipped && !active ? 'Shipped orders are final' : undefined}
+              disabled={blocked}
+              title={blocked ? why : s === 'READY' ? 'Set the delivery fee and ask for the balance' : undefined}
               onClick={() => {
                 if (active) return
                 if (s === 'SHIPPED') setShipping(true)
+                else if (s === 'READY') ready.show()
                 else dispatch({ type: 'SET_STATUS', orderId: order.id, status: s })
               }}
               className={cx(
@@ -63,6 +77,7 @@ export function StatusControl({ order, size = 'md' }: { order: Order; size?: 'sm
                 size === 'sm' ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-[11px]',
                 active && s === 'PENDING' && 'bg-amber-wash text-amber-ink shadow-sm',
                 active && s === 'PROCESSING' && 'bg-pink-wash text-pink-ink shadow-sm',
+                active && s === 'READY' && 'bg-green-wash text-green-ink shadow-sm ring-1 ring-green/40',
                 active && s === 'SHIPPED' && 'bg-green text-on-green shadow-sm',
                 !active && 'text-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-muted',
               )}
@@ -73,8 +88,132 @@ export function StatusControl({ order, size = 'md' }: { order: Order; size?: 'sm
           )
         })}
       </div>
+      {order.status === 'READY' && due > 0 && (
+        <Button size="sm" variant="secondary" onClick={() => setPaying(true)}>
+          <CreditCard size={13} aria-hidden /> Balance {formatKES(due)}
+        </Button>
+      )}
       <ShipDialog order={order} open={shipping} onClose={() => setShipping(false)} />
+      <ReadyDialog key={ready.key} order={order} open={ready.open} onClose={ready.hide} />
+      <PaymentDialog order={order} open={paying} onClose={() => setPaying(false)} />
     </div>
+  )
+}
+
+/** Where the customer sees and pays their order. Works on the device they ordered from, or signed in. */
+function orderLink(order: Order): string {
+  return `${window.location.origin}${window.location.pathname}#/thanks/${order.id}`
+}
+
+/** WhatsApp link with the "ready" message for this order and delivery fee, or null without a phone number. */
+function readyWhatsApp(state: AppState, order: Order, deliveryFee: number): string | null {
+  const customer = state.customers.find((c) => c.id === order.customerId)
+  const phone = whatsappNumber(customer?.phone)
+  if (!phone) return null
+  const paid = amountPaid(order)
+  const text = readyMessage({
+    firstName: customer?.name.split(' ')[0] ?? 'there',
+    number: order.number,
+    summary: orderSummary(state, order),
+    method: order.fulfilment.method,
+    remaining: Math.max(0, itemsSubtotal(order) - paid),
+    deliveryFee,
+    balance: Math.max(0, itemsSubtotal(order) + deliveryFee - paid),
+    payUrl: orderLink(order),
+  })
+  return whatsappLink(phone, text)
+}
+
+/**
+ * "Order ready": asks for the delivery fee, shows the balance (remaining 50% + delivery),
+ * then opens WhatsApp with the message to the customer, ready to send.
+ */
+function ReadyDialog({ order, open, onClose }: { order: Order; open: boolean; onClose: () => void }) {
+  const { state, dispatch, toast } = useStore()
+  const customer = state.customers.find((c) => c.id === order.customerId)
+  const phone = whatsappNumber(customer?.phone)
+  const suggested = order.status === 'READY' ? order.fulfilment.deliveryFee : order.fulfilment.method === 'SHIPPING' ? state.settings.defaultShippingFee : undefined
+  const [fee, setFee] = useState(suggested === undefined ? '' : String(suggested))
+  const [sendWhatsApp, setSendWhatsApp] = useState(Boolean(phone))
+  const deliveryFee = fee.trim() === '' ? NaN : Number(fee)
+  const valid = Number.isInteger(deliveryFee) && deliveryFee >= 0
+  const paid = amountPaid(order)
+  const balance = valid ? Math.max(0, itemsSubtotal(order) + deliveryFee - paid) : 0
+
+  const confirm = async () => {
+    if (!valid) return toast('Enter the delivery fee in KES (0 if it’s free).', 'error')
+    // Open WhatsApp straight from the tap, so the browser doesn't block it as a pop-up.
+    const link = sendWhatsApp ? readyWhatsApp(state, order, deliveryFee) : null
+    if (link) window.open(link, '_blank', 'noopener')
+    const r = await dispatch({ type: 'ORDER_READY', orderId: order.id, deliveryFee })
+    if (r.ok) onClose()
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`${order.number} is ready?`}
+      subtitle={`${orderSummary(state, order)} · ${DELIVERY_LABEL[order.fulfilment.method]}`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Not yet
+          </Button>
+          <Button variant="primary" onClick={confirm} disabled={!valid}>
+            <CircleCheck size={15} aria-hidden /> {sendWhatsApp && phone ? 'Mark ready & message on WhatsApp' : 'Mark ready'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Delivery fee (KES)" hint={`${DELIVERY_LABEL[order.fulfilment.method]} · ${order.fulfilment.address}. Enter 0 if delivery is free.`}>
+          <input
+            id="ready-delivery-fee"
+            type="number"
+            min={0}
+            step={50}
+            inputMode="numeric"
+            className={inputClass}
+            value={fee}
+            onChange={(e) => setFee(e.target.value)}
+            placeholder={`e.g. ${state.settings.defaultShippingFee}`}
+            autoFocus
+          />
+        </Field>
+        <section className="rounded-xl border border-line text-sm">
+          <div className="flex justify-between border-b border-line px-4 py-2">
+            <span>Bouquets</span>
+            <span className="tabular">{formatKES(itemsSubtotal(order))}</span>
+          </div>
+          <div className="flex justify-between border-b border-line px-4 py-2 text-ink-2">
+            <span>Paid so far</span>
+            <span className="tabular">− {formatKES(paid)}</span>
+          </div>
+          <div className="flex justify-between border-b border-line px-4 py-2 text-ink-2">
+            <span>Delivery</span>
+            <span className="tabular">{valid ? formatKES(deliveryFee) : '—'}</span>
+          </div>
+          <div className="flex justify-between px-4 py-2 font-semibold">
+            <span>Balance to pay</span>
+            <span className="tabular">{valid ? formatKES(balance) : '—'}</span>
+          </div>
+        </section>
+        {phone ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-1" checked={sendWhatsApp} onChange={(e) => setSendWhatsApp(e.target.checked)} />
+            <span>
+              Message {customer?.name} on WhatsApp ({customer?.phone}). WhatsApp opens with the message written, including the payment link; just tap Send.
+            </span>
+          </label>
+        ) : (
+          <Notice tone="warn">No phone number on file for this customer, so no WhatsApp message. {order.threadId ? 'They’ll see it in the chat.' : ''}</Notice>
+        )}
+        <p className="text-xs text-muted">
+          {order.threadId ? 'The customer also gets the balance and a Pay button in the site chat. ' : ''}A Pay balance button appears on their order page.
+        </p>
+      </div>
+    </Modal>
   )
 }
 
@@ -111,7 +250,7 @@ function ShipDialog({ order, open, onClose }: { order: Order; open: boolean; onC
       <div className="space-y-4">
         {hand ? (
           <p className="text-sm text-ink-2">
-            Hand delivery to <strong>{order.fulfilment.address}</strong>. No delivery charge.
+            Delivery within Nairobi to <strong>{order.fulfilment.address}</strong>.
           </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -139,16 +278,18 @@ function ShipDialog({ order, open, onClose }: { order: Order; open: boolean; onC
   )
 }
 
+/** Sends the payment link, or records a payment made outside Paystack, for whatever is due now. */
 function PaymentDialog({ order, open, onClose }: { order: Order; open: boolean; onClose: () => void }) {
   const { dispatch } = useStore()
   const [method, setMethod] = useState<PaymentMethod>('MPESA')
   const [reference, setReference] = useState('')
+  const stage = paymentStage(order)
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={`Payment for ${order.number}`}
-      subtitle={`${formatKES(orderTotal(order))} due`}
+      title={`${stage === 'BALANCE' ? 'Balance' : 'Deposit'} for ${order.number}`}
+      subtitle={`${formatKES(amountDue(order))} due${stage === 'BALANCE' ? ' (remaining 50% + delivery)' : ' (50% of the bouquets)'}`}
       footer={
         <>
           <Button
@@ -274,6 +415,8 @@ export function OrderDrawer() {
   const customer = state.customers.find((c) => c.id === order.customerId)
   const fee = state.fees.find((f) => f.orderId === order.id)
   const close = () => openOrder(null)
+  // The delivery fee is set when the order is marked ready (older orders had it from the start).
+  const feeSet = Boolean(order.readyAt) || order.fulfilment.deliveryFee > 0 || order.status === 'SHIPPED'
 
   return (
     <Modal
@@ -284,7 +427,7 @@ export function OrderDrawer() {
       subtitle={`Placed ${formatDateTime(order.createdAt)} · ${sourceLabel(state, order)}`}
       footer={
         <>
-          {['PENDING_PAYMENT', 'PENDING', 'PROCESSING'].includes(order.status) && (
+          {['PENDING_PAYMENT', 'PENDING', 'PROCESSING', 'READY'].includes(order.status) && (
             <Button variant="danger" onClick={() => setConfirm('cancel')}>
               <Ban size={14} aria-hidden /> Cancel order
             </Button>
@@ -293,6 +436,16 @@ export function OrderDrawer() {
             <Button variant="danger" onClick={() => setConfirm('refund')}>
               <Undo2 size={14} aria-hidden /> Refund
             </Button>
+          )}
+          {order.status === 'READY' && amountDue(order) > 0 && readyWhatsApp(state, order, order.fulfilment.deliveryFee) && (
+            <a
+              href={readyWhatsApp(state, order, order.fulfilment.deliveryFee)!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-10 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-4 text-sm font-medium hover:bg-surface-2"
+            >
+              <Send size={14} aria-hidden /> Remind on WhatsApp
+            </a>
           )}
           {order.threadId && (
             <Button
@@ -323,12 +476,24 @@ export function OrderDrawer() {
             </div>
           ))}
           <div className="flex justify-between border-b border-line px-4 py-2.5 text-sm text-ink-2">
-            <span>{order.fulfilment.method === 'HAND_DELIVERY' ? 'Hand delivery' : 'Courier delivery'}</span>
-            <span className="tabular">{order.fulfilment.deliveryFee ? formatKES(order.fulfilment.deliveryFee) : 'Free'}</span>
+            <span>Delivery · {DELIVERY_LABEL[order.fulfilment.method]}</span>
+            <span className="tabular">{feeSet ? formatKES(order.fulfilment.deliveryFee) : 'Set when ready'}</span>
           </div>
-          <div className="flex justify-between px-4 py-2.5 text-sm font-semibold">
+          <div className="flex justify-between border-b border-line px-4 py-2.5 text-sm font-semibold">
             <span>Total</span>
             <span className="tabular">{formatKES(orderTotal(order))}</span>
+          </div>
+          {paymentRecords(order).map((p, i) => (
+            <div key={i} className="flex justify-between border-b border-line px-4 py-2 text-sm text-ink-2">
+              <span>
+                {p.kind === 'DEPOSIT' ? 'Deposit' : p.kind === 'BALANCE' ? 'Balance' : 'Paid'} · {p.method === 'CARD' ? 'Card' : 'M-Pesa'} <span className="tabular text-muted">{p.reference}</span>
+              </span>
+              <span className="tabular">− {formatKES(p.amount)}</span>
+            </div>
+          ))}
+          <div className="flex justify-between px-4 py-2.5 text-sm font-semibold">
+            <span>{amountDue(order) > 0 ? (paymentStage(order) === 'DEPOSIT' ? 'Deposit due now' : 'Balance due now') : 'Still to pay'}</span>
+            <span className="tabular">{formatKES(amountDue(order) > 0 ? amountDue(order) : Math.max(0, orderTotal(order) - amountPaid(order)))}</span>
           </div>
         </section>
 
@@ -367,12 +532,7 @@ export function OrderDrawer() {
           <div>
             <dt className="eyebrow mb-0.5">Payment</dt>
             <dd>
-              {order.payment.status === 'UNPAID' && 'Not paid yet'}
-              {order.payment.status !== 'UNPAID' && (
-                <>
-                  {order.payment.method === 'CARD' ? 'Card' : 'M-Pesa'} · <span className="tabular">{order.payment.reference}</span>
-                </>
-              )}
+              {PAYMENT_LABEL[order.payment.status]}
               {order.payment.refundedAmount ? <div className="text-red-ink">Refunded {formatKES(order.payment.refundedAmount)}</div> : null}
             </dd>
           </div>
@@ -427,7 +587,17 @@ export function OrderDrawer() {
           </p>
         ) : (
           <p className="text-sm text-ink-2">
-            {order.payment.status === 'PAID' ? <>The customer gets the full <strong>{formatKES(orderTotal(order))}</strong> back. </> : 'Nothing has been paid yet. '}
+            {amountPaid(order) === 0 && 'Nothing has been paid yet. '}
+            {amountPaid(order) - refundAmountFor(order) > 0 && (
+              <>
+                The <strong>{formatKES(amountPaid(order) - refundAmountFor(order))}</strong> deposit is kept (non-refundable).{' '}
+              </>
+            )}
+            {refundAmountFor(order) > 0 && (
+              <>
+                Refund <strong>{formatKES(refundAmountFor(order))}</strong> to the customer.{' '}
+              </>
+            )}
             No service fee is charged. {order.materialsDeducted && 'Materials already used stay used.'}
           </p>
         )}
@@ -447,15 +617,14 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
   const [phone, setPhone] = useState(customer?.phone ?? '')
   const [items, setItems] = useState([{ productId: forSale(state.products)[0].id, qty: 1 }])
   const [customisation, setCustomisation] = useState('')
-  const [method, setMethod] = useState<FulfilmentMethod>('SHIPPING')
+  const [method, setMethod] = useState<FulfilmentMethod>('HAND_DELIVERY')
   const [address, setAddress] = useState('')
-  const [deliveryFee, setDeliveryFee] = useState(state.settings.defaultShippingFee)
   const [payKind, setPayKind] = useState<'SEND_LINK' | 'PAID' | 'UNPAID'>('SEND_LINK')
   const [payMethod, setPayMethod] = useState<PaymentMethod>('MPESA')
   const [reference, setReference] = useState('')
 
   const subtotal = items.reduce((s, i) => s + i.qty * (state.products.find((p) => p.id === i.productId)?.price ?? 0), 0)
-  const fee = method === 'HAND_DELIVERY' ? 0 : deliveryFee
+  const deposit = Math.ceil(subtotal / 2)
 
   const submit = async () => {
     const draft: OrderDraft = {
@@ -468,7 +637,6 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
       customisation,
       method,
       address,
-      deliveryFee: fee,
       payment: payKind === 'PAID' ? { kind: 'PAID', method: payMethod, reference } : { kind: payKind },
     }
     const r = await dispatch({ type: 'CREATE_ORDER', draft })
@@ -488,13 +656,13 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
       footer={
         <>
           <div className="mr-auto self-center text-sm">
-            Total <strong className="tabular">{formatKES(subtotal + fee)}</strong>
+            Deposit <strong className="tabular">{formatKES(deposit)}</strong> of {formatKES(subtotal)}
           </div>
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
           <Button variant="primary" onClick={submit}>
-            {payKind === 'SEND_LINK' ? 'Create & send payment link' : 'Create order'}
+            {payKind === 'SEND_LINK' ? 'Create & send deposit link' : 'Create order'}
           </Button>
         </>
       }
@@ -573,28 +741,21 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
 
         <fieldset className="space-y-3">
           <legend className="eyebrow mb-2">Delivery</legend>
-          <div role="radiogroup" aria-label="Delivery method" className="grid gap-2 sm:grid-cols-2">
-            <Choice checked={method === 'SHIPPING'} onSelect={() => setMethod('SHIPPING')} title="Courier delivery" detail={`${formatKES(deliveryFee)} delivery fee`} />
-            <Choice checked={method === 'HAND_DELIVERY'} onSelect={() => setMethod('HAND_DELIVERY')} title="Hand delivery" detail="No delivery cost" />
+          <div role="radiogroup" aria-label="Delivery" className="grid gap-2 sm:grid-cols-2">
+            <Choice checked={method === 'HAND_DELIVERY'} onSelect={() => setMethod('HAND_DELIVERY')} title="Within Nairobi" detail="Fee set when it’s ready" />
+            <Choice checked={method === 'SHIPPING'} onSelect={() => setMethod('SHIPPING')} title="Outside Nairobi" detail="Fee set when it’s ready" />
           </div>
-          <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
-            <Field label={method === 'SHIPPING' ? 'Delivery address' : 'Hand-deliver to'}>
-              <input className={inputClass} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Area, town" />
-            </Field>
-            {method === 'SHIPPING' && (
-              <Field label="Delivery fee">
-                <input type="number" min={0} className={inputClass} value={deliveryFee} onChange={(e) => setDeliveryFee(Math.max(0, Math.floor(Number(e.target.value) || 0)))} />
-              </Field>
-            )}
-          </div>
+          <Field label="Delivery address">
+            <input className={inputClass} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Area, town" />
+          </Field>
         </fieldset>
 
         <fieldset className="space-y-3">
           <legend className="eyebrow mb-2">Payment</legend>
           <div role="radiogroup" aria-label="Payment" className="grid gap-2 sm:grid-cols-3">
-            <Choice checked={payKind === 'SEND_LINK'} onSelect={() => setPayKind('SEND_LINK')} title="Send payment link" detail="M-Pesa or card" />
-            <Choice checked={payKind === 'PAID'} onSelect={() => setPayKind('PAID')} title="Already paid" detail="Enter the code" />
-            <Choice checked={payKind === 'UNPAID'} onSelect={() => setPayKind('UNPAID')} title="Collect later" detail="Waits for payment" />
+            <Choice checked={payKind === 'SEND_LINK'} onSelect={() => setPayKind('SEND_LINK')} title="Send deposit link" detail="M-Pesa or card" />
+            <Choice checked={payKind === 'PAID'} onSelect={() => setPayKind('PAID')} title="Deposit paid" detail="Enter the code" />
+            <Choice checked={payKind === 'UNPAID'} onSelect={() => setPayKind('UNPAID')} title="Collect later" detail="Waits for the deposit" />
           </div>
           {payKind === 'PAID' && (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -611,7 +772,7 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
           )}
         </fieldset>
         <div className="text-sm text-muted">
-          Bouquets {formatKES(subtotal)} + delivery {fee ? formatKES(fee) : 'free'} = <strong className="text-ink">{formatKES(subtotal + fee)}</strong>
+          50% deposit now: <strong className="text-ink">{formatKES(deposit)}</strong>. The other {formatKES(subtotal - deposit)} plus delivery is due when it’s ready.
         </div>
       </div>
     </Modal>

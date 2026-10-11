@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { applyAction, type Action, type ActionResult } from '../src/domain/actions'
 import { staffRoleFor } from '../src/domain/auth'
 import { productPerformance } from '../src/domain/metrics'
-import { orderTotal } from '../src/domain/orders'
+import { amountDue, paymentStage } from '../src/domain/orders'
 import { createEmptyState, STATE_VERSION } from '../src/domain/seed'
 import type { AppState, Customer, Role } from '../src/domain/types'
 import type { Repo } from './repo'
@@ -253,16 +253,18 @@ export async function startPayment(
   const order = state.orders.find((o) => o.id === orderId)
   const visible = order && viewFor(state, ctx).orders.some((o) => o.id === order.id)
   if (!order || !visible) return { ok: false, error: 'Order not found.', status: 404 }
-  if (order.status !== 'PENDING_PAYMENT') return { ok: false, error: 'This order doesn’t need paying.', status: 400 }
+  // Charge whatever is due now: the 50% deposit, or the balance (rest + delivery) once it's ready.
+  const stage = paymentStage(order)
+  if (!stage) return { ok: false, error: 'Nothing is due on this order right now.', status: 400 }
   const customer = state.customers.find((c) => c.id === order.customerId)
   const tx = await paystack.initialize({
     email: customer?.email || options.receiptEmail,
-    amount: orderTotal(order) * 100,
+    amount: amountDue(order) * 100,
     currency: 'KES',
-    reference: `${order.number}-${randomBytes(4).toString('hex')}`,
+    reference: `${order.number}-${stage === 'DEPOSIT' ? 'D' : 'B'}-${randomBytes(4).toString('hex')}`,
     channels: ['mobile_money', 'card'],
     // cancel_action: where Paystack's page sends someone who cancels (back to their order, unpaid).
-    metadata: { orderId: order.id, orderNumber: order.number, ...(options.callbackUrl ? { cancel_action: options.callbackUrl } : {}) },
+    metadata: { orderId: order.id, orderNumber: order.number, stage, ...(options.callbackUrl ? { cancel_action: options.callbackUrl } : {}) },
     callback_url: options.callbackUrl,
   })
   return { ok: true, accessCode: tx.access_code, reference: tx.reference, authorizationUrl: tx.authorization_url }

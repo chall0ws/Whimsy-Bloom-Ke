@@ -6,7 +6,7 @@ import { Avatar, Button, cx, EmptyState, inputClass, Segmented, StatusChip, Unre
 import { AUTO_REPLY } from '../domain/actions'
 import { formatDate, formatKES, formatTime, isSameDay, relativeTime } from '../domain/format'
 import { customerStats, lastMessageAt, unreadCount, unreadTotals } from '../domain/metrics'
-import { orderSummary, orderTotal } from '../domain/orders'
+import { amountDue, orderSummary, orderTotal, paymentStage } from '../domain/orders'
 import type { Message, Thread } from '../domain/types'
 import { navigate } from '../router'
 import { makeTypingNotifier, useLiveSignals } from '../state/live'
@@ -158,7 +158,8 @@ function Conversation({ thread, online, typing }: { thread: Thread; online: bool
   const end = useRef<HTMLDivElement>(null)
   const notifyTyping = useMemo(() => makeTypingNotifier(thread.id, 'shop'), [thread.id])
   const customer = state.customers.find((c) => c.id === thread.customerId)
-  const unpaid = state.orders.find((o) => o.threadId === thread.id && o.status === 'PENDING_PAYMENT')
+  // An order in this chat with something to pay now: the deposit, or the balance once it's ready.
+  const unpaid = state.orders.find((o) => o.threadId === thread.id && amountDue(o) > 0)
   const n = unreadCount(thread)
   const lastShop = [...thread.messages].reverse().find((m) => m.from === 'SHOP')
   const seen = lastShop && thread.customerReadAt && thread.customerReadAt >= lastShop.at
@@ -232,7 +233,7 @@ function Conversation({ thread, online, typing }: { thread: Thread; online: bool
         <div className="scroll-thin mb-2 flex gap-1.5 overflow-x-auto pb-1">
           {unpaid && (
             <button type="button" onClick={() => dispatch({ type: 'SEND_PAYMENT_LINK', orderId: unpaid.id })} className="shrink-0 rounded-full border border-pink bg-pink-wash px-3 py-1 text-xs font-medium text-pink-ink">
-              Resend payment link · {unpaid.number}
+              Resend {paymentStage(unpaid) === 'BALANCE' ? 'balance' : 'deposit'} link · {unpaid.number}
             </button>
           )}
           {QUICK_REPLIES.map((r) => (

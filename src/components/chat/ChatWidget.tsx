@@ -1,7 +1,7 @@
 import { CircleCheck, Send, Smartphone, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatDate, formatKES, formatTime, isSameDay } from '../../domain/format'
-import { orderSummary, orderTotal } from '../../domain/orders'
+import { amountDue, orderSummary, orderTotal, paymentStage } from '../../domain/orders'
 import type { Message, Thread } from '../../domain/types'
 import { makeTypingNotifier, useLiveSignals, usePresence } from '../../state/live'
 import { payLabel, payingLabel, usePayNow } from '../../shop/OrderBits'
@@ -288,25 +288,28 @@ function PaymentCard({ orderId }: { orderId: string }) {
   const order = state.orders.find((o) => o.id === orderId)
 
   if (!order) return null
-  const paid = order.payment.status !== 'UNPAID'
+  const due = amountDue(order)
+  const stage = paymentStage(order)
   return (
     <div className="mt-2 rounded-xl border border-line bg-surface-2 p-3">
       <div className="text-xs text-muted">Order {order.number}</div>
       <div className="text-sm font-medium">{orderSummary(state, order)}</div>
-      <div className="mt-0.5 text-base font-semibold">{formatKES(orderTotal(order))}</div>
-      {paid ? (
+      <div className="mt-0.5 text-base font-semibold">
+        {due > 0 ? `${stage === 'DEPOSIT' ? 'Deposit' : 'Balance'} ${formatKES(due)}` : formatKES(orderTotal(order))}
+      </div>
+      {order.status === 'CANCELLED' || order.status === 'REFUNDED' ? (
+        <div className="mt-2 text-sm text-muted">This order was {order.status === 'CANCELLED' ? 'cancelled' : 'refunded'}.</div>
+      ) : due === 0 ? (
         <div className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-green-ink">
-          <CircleCheck size={16} aria-hidden /> Paid
+          <CircleCheck size={16} aria-hidden /> {order.payment.status === 'DEPOSIT_PAID' ? 'Deposit paid' : 'Paid'}
         </div>
-      ) : order.status === 'CANCELLED' ? (
-        <div className="mt-2 text-sm text-muted">This order was cancelled.</div>
       ) : busy ? (
         <div className="mt-2 flex items-center gap-1.5 text-sm text-ink-2">
           <Smartphone size={16} className="animate-pulse" aria-hidden /> {payingLabel}
         </div>
       ) : (
         <Button variant="primary" size="sm" className="mt-2 w-full" onClick={() => pay(order)}>
-          <Smartphone size={14} aria-hidden /> {payLabel(orderTotal(order))}
+          <Smartphone size={14} aria-hidden /> {payLabel(amountDue(order), paymentStage(order))}
         </Button>
       )}
     </div>

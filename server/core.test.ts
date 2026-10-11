@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import type { Action, OrderDraft } from '../src/domain/actions'
 import { createSeedState } from '../src/domain/seed'
-import { DEFAULT_SETTINGS, forSale, PRODUCTS } from '../src/domain/catalog'
+import { forSale, PRODUCTS } from '../src/domain/catalog'
 import { confirmPaystack, handleWebhook, readState, runAction, startPayment, type Caller, type Ctx, type PaystackApi, type PaystackTransaction } from './core'
 import { diff, fromRecords, toMeta, toRecords } from './records'
 import { MemoryRepo } from './repo'
@@ -17,6 +17,7 @@ function ctx(repo: MemoryRepo, caller: Caller | null, guestTokens: string[] = []
 }
 
 const BOUQUET = forSale(PRODUCTS)[0]
+const DEPOSIT = Math.ceil(BOUQUET.price / 2)
 
 const draft = (over: Partial<OrderDraft> = {}): OrderDraft => ({
   customerName: 'Joy Wairimu',
@@ -160,7 +161,7 @@ describe('server rules', () => {
 })
 
 describe('Paystack', () => {
-  it('charges the order total from the database and marks it paid once Paystack confirms', async () => {
+  it('charges the 50% deposit from the database and marks it paid once Paystack confirms', async () => {
     const repo = new MemoryRepo()
     const paystack = new FakePaystack()
     const placed = await guestOrder(repo)
@@ -171,7 +172,8 @@ describe('Paystack', () => {
     const back = 'https://shop.example/?paid_order=' + placed.createdOrderId
     const start = await startPayment(guest, paystack, placed.createdOrderId!, { receiptEmail: 'shop@example.com', callbackUrl: back })
     if (!start.ok) throw new Error(start.error)
-    expect(paystack.initialized[0]).toMatchObject({ amount: (BOUQUET.price + DEFAULT_SETTINGS.defaultShippingFee) * 100, currency: 'KES', email: 'shop@example.com', channels: ['mobile_money', 'card'], callback_url: back })
+    expect(paystack.initialized[0]).toMatchObject({ amount: DEPOSIT * 100, currency: 'KES', email: 'shop@example.com', channels: ['mobile_money', 'card'], callback_url: back })
+    expect(paystack.initialized[0].metadata.stage).toBe('DEPOSIT')
     // Cancelling on Paystack's page brings them back to their order too.
     expect(paystack.initialized[0].metadata.cancel_action).toBe(back)
 
@@ -181,8 +183,39 @@ describe('Paystack', () => {
     expect(await confirmPaystack(repo, paystack, start.reference)).toMatchObject({ ok: true, paid: true })
     expect(await confirmPaystack(repo, paystack, start.reference)).toMatchObject({ ok: true, paid: true })
     const order = (await readState(guest)).orders[0]
-    expect(order).toMatchObject({ status: 'PENDING', payment: { status: 'PAID', method: 'MPESA' } })
-    expect(order.history.filter((h) => h.note === 'Payment confirmed')).toHaveLength(1)
+    expect(order).toMatchObject({ status: 'PENDING', payment: { status: 'DEPOSIT_PAID', method: 'MPESA' } })
+    expect(order.history.filter((h) => h.note?.startsWith('Deposit'))).toHaveLength(1)
+    // Nothing more to pay until it's ready.
+    expect(await startPayment(guest, paystack, order.id, { receiptEmail: 'shop@example.com' })).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('charges the balance plus delivery once the shop marks the order ready', async () => {
+    const repo = new MemoryRepo()
+    const paystack = new FakePaystack()
+    const placed = await guestOrder(repo)
+    if (!placed.ok) throw new Error()
+    const guest = ctx(repo, null, [placed.guestToken!])
+    const orderId = placed.createdOrderId!
+    const deposit = await startPayment(guest, paystack, orderId, { receiptEmail: 'shop@example.com' })
+    if (!deposit.ok) throw new Error(deposit.error)
+    paystack.pay(deposit.reference)
+    await confirmPaystack(repo, paystack, deposit.reference)
+
+    // Only the team can mark it ready and set the delivery fee.
+    expect(await runAction(guest, { type: 'ORDER_READY', orderId, deliveryFee: 0 })).toMatchObject({ ok: false, status: 403 })
+    expect((await runAction(ctx(repo, owner), { type: 'ORDER_READY', orderId, deliveryFee: 400 })).ok).toBe(true)
+
+    const balance = await startPayment(guest, paystack, orderId, { receiptEmail: 'shop@example.com' })
+    if (!balance.ok) throw new Error(balance.error)
+    expect(paystack.initialized[1]).toMatchObject({ amount: (BOUQUET.price - DEPOSIT + 400) * 100 })
+    expect(paystack.initialized[1].metadata.stage).toBe('BALANCE')
+    expect(balance.reference).toContain('-B-')
+    paystack.pay(balance.reference)
+    expect(await confirmPaystack(repo, paystack, balance.reference)).toMatchObject({ ok: true, paid: true })
+    const order = (await readState(guest)).orders[0]
+    expect(order).toMatchObject({ status: 'READY', payment: { status: 'PAID' } })
+    // Fully paid: the team can send it.
+    expect((await runAction(ctx(repo, owner), { type: 'SET_STATUS', orderId, status: 'SHIPPED' })).ok).toBe(true)
   })
 
   it('refuses a payment for the wrong amount', async () => {
@@ -208,7 +241,7 @@ describe('Paystack', () => {
     expect((await handleWebhook(repo, paystack, body, 'forged', 'sk_test_secret')).status).toBe(401)
     const signature = createHmac('sha512', 'sk_test_secret').update(body).digest('hex')
     expect((await handleWebhook(repo, paystack, body, signature, 'sk_test_secret')).status).toBe(200)
-    expect((await repo.load()).state.orders[0].payment.status).toBe('PAID')
+    expect((await repo.load()).state.orders[0].payment.status).toBe('DEPOSIT_PAID')
   })
 })
 

@@ -6,12 +6,12 @@ import { ChatWidget, customerUnread } from '../components/chat/ChatWidget'
 import { BloomMark, HeartDivider, Logo, Script, Sparkles } from '../components/Logo'
 import { Button, cx, Field, inputClass } from '../components/ui'
 import { formatDate, formatKES } from '../domain/format'
-import { orderSummary, orderTotal } from '../domain/orders'
+import { amountDue, DELIVERY_LABEL, orderSummary, orderTotal } from '../domain/orders'
 import type { Customer, Order } from '../domain/types'
 import { navigate, type AccountTab } from '../router'
 import { useStore } from '../state/store'
 import { useCart } from './cart'
-import { OrderTracker, PayButton } from './OrderBits'
+import { OrderTracker, PayButton, PaymentSummary } from './OrderBits'
 import { Loading, useCustomer } from './ShopLayout'
 
 /** My account: orders with tracking, chat and details. Signing in is optional for shopping. */
@@ -153,7 +153,7 @@ function SignedIn({ customer, account, tab }: { customer: Customer; account: Aut
   )
 }
 
-const ACTIVE: Order['status'][] = ['PENDING_PAYMENT', 'PENDING', 'PROCESSING']
+const ACTIVE: Order['status'][] = ['PENDING_PAYMENT', 'PENDING', 'PROCESSING', 'READY']
 
 function OrdersTab({ customer, onAsk }: { customer: Customer; onAsk: (order: Order) => void }) {
   const { state } = useStore()
@@ -198,7 +198,8 @@ function OrdersTab({ customer, onAsk }: { customer: Customer; onAsk: (order: Ord
 function OrderCard({ order, onAsk, compact }: { order: Order; onAsk: (o: Order) => void; compact?: boolean }) {
   const { state } = useStore()
   const { add } = useCart()
-  const unpaid = order.status === 'PENDING_PAYMENT'
+  // Something to pay now: the deposit, or the balance once it's ready.
+  const unpaid = amountDue(order) > 0
 
   return (
     <article className={cx('rounded-3xl border bg-surface p-5 shadow-card', unpaid ? 'border-pink' : 'border-line')}>
@@ -227,9 +228,11 @@ function OrderCard({ order, onAsk, compact }: { order: Order; onAsk: (o: Order) 
           <div className="mt-4">
             <OrderTracker order={order} />
           </div>
-          <p className="mt-3 text-sm text-ink-2">
-            {order.fulfilment.method === 'HAND_DELIVERY' ? 'Hand delivery to ' : 'Courier to '}
-            {order.fulfilment.address}
+          <div className="mt-3">
+            <PaymentSummary order={order} />
+          </div>
+          <p className="mt-2 text-sm text-ink-2">
+            {DELIVERY_LABEL[order.fulfilment.method]} · {order.fulfilment.address}
             {order.fulfilment.trackingNumber && (
               <>
                 {' '}
