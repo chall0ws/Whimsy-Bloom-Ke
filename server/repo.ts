@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS } from '../src/domain/catalog'
 import type { AppState } from '../src/domain/types'
 import { diff, fromRecords, toMeta, toRecords, type Changes, type Meta, type RecordRow } from './records'
 
@@ -23,7 +24,7 @@ export class MemoryRepo implements Repo {
   notified: number[] = []
 
   async load() {
-    const meta = this.meta ?? { settings: { serviceFee: 100, feeOnHandDelivery: true, defaultShippingFee: 300, payoutSchedule: 'WEEKLY' }, chatStatus: 'ONLINE', nextOrderNumber: 1001, nextId: 1000 }
+    const meta = this.meta ?? { settings: DEFAULT_SETTINGS, chatStatus: 'ONLINE', nextOrderNumber: 1001, nextId: 1000 }
     return { state: fromRecords([...this.rows.values()].map((r) => structuredClone(r)), structuredClone(meta) as Meta), version: this.version }
   }
 

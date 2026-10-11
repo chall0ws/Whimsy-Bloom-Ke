@@ -111,7 +111,8 @@ export const RECIPES: Recipes = {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  serviceFee: 100,
+  serviceFee: 75,
+  transactionFeePercent: 1.5,
   feeOnHandDelivery: true,
   defaultShippingFee: 300,
   payoutSchedule: 'WEEKLY',

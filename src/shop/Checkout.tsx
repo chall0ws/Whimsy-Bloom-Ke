@@ -13,7 +13,7 @@ import type { FulfilmentMethod } from '../domain/types'
 import { navigate } from '../router'
 import { useStore } from '../state/store'
 import { placedHere, rememberOrder, useCart } from './cart'
-import { mpesaReference, OrderTracker, PayButton, payLabel, PaymentSummary } from './OrderBits'
+import { mpesaReference, OrderTracker, PayButton, payLabel, PaymentSummary, ReadyPhoto } from './OrderBits'
 import { outcomeMessage, payOrder } from './paystack'
 import { ProductArt } from './ProductArt'
 import { Loading } from './ShopLayout'
@@ -423,6 +423,7 @@ export function Thanks({ orderId }: { orderId: string }) {
           <div className="shrink-0 font-semibold">{formatKES(orderTotal(order))}</div>
         </div>
         <OrderTracker order={order} />
+        <ReadyPhoto order={order} />
         <p className="text-sm text-ink-2">
           {DELIVERY_LABEL[order.fulfilment.method]} · 
           {order.fulfilment.address}

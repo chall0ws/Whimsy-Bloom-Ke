@@ -322,3 +322,26 @@ export async function handleWebhook(repo: Repo, paystack: PaystackApi, rawBody: 
   // Always 200 for genuine webhooks so Paystack doesn't keep retrying ones we've handled or don't need.
   return { status: 200, body: 'OK' }
 }
+
+/** Where order photos are kept (Supabase Storage live; memory in tests). Returns the public URL. */
+export interface PhotoStore {
+  upload(path: string, bytes: Uint8Array, contentType: string): Promise<string>
+}
+
+export type SavePhotoResponse = { ok: true; url: string } | { ok: false; error: string; status: number }
+
+const PHOTO_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
+export const MAX_PHOTO_BYTES = 3_000_000
+
+/** Stores the photo of a finished bouquet. Team only. */
+export async function saveOrderPhoto(ctx: Ctx, store: PhotoStore, orderId: string, dataUrl: string): Promise<SavePhotoResponse> {
+  const { state } = await loadOrCreate(ctx.repo)
+  if (!roleOf(ctx, state)) return { ok: false, error: 'Only the team can add order photos.', status: 403 }
+  if (!state.orders.some((o) => o.id === orderId)) return { ok: false, error: 'Order not found.', status: 404 }
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl)
+  if (!match) return { ok: false, error: 'Please choose a JPG, PNG or WebP photo.', status: 400 }
+  const bytes = Buffer.from(match[2], 'base64')
+  if (bytes.length > MAX_PHOTO_BYTES) return { ok: false, error: 'That photo is too large.', status: 413 }
+  const path = `${orderId}/${randomBytes(8).toString('hex')}.${PHOTO_TYPES[match[1]]}`
+  return { ok: true, url: await store.upload(path, new Uint8Array(bytes), match[1]) }
+}

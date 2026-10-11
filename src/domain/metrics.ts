@@ -1,5 +1,5 @@
 import { isSameDay } from './format'
-import { netRevenue } from './orders'
+import { amountPaid, itemsSubtotal, netRevenue } from './orders'
 import type { AppState, Customer, Order, OrderStatus, Thread } from './types'
 
 /** Orders with a deposit paid that are still live (not cancelled or refunded) count as sales. */
@@ -137,4 +137,46 @@ export function buildableUnits(state: AppState, productId: string): number {
       }),
     ),
   )
+}
+
+/** Where one order's money goes. */
+export interface OrderMoney {
+  orderId: string
+  number: string
+  createdAt: string
+  /** Paid by the customer, minus any refund. */
+  received: number
+  /** Card / M-Pesa processing, a percentage of everything paid (fees aren't returned on refunds). */
+  transactionFee: number
+  /** The partner's fee, charged when the order ships. */
+  serviceFee: number
+  /** Passed on to the rider or courier, once the customer has paid it. */
+  delivery: number
+  net: number
+}
+
+export function orderMoney(state: AppState, order: Order): OrderMoney {
+  const paid = amountPaid(order)
+  const received = paid - (order.payment.refundedAmount ?? 0)
+  const transactionFee = Math.round((paid * state.settings.transactionFeePercent) / 100)
+  const serviceFee = state.fees.filter((f) => f.orderId === order.id).reduce((sum, f) => sum + f.amount, 0)
+  const delivery = Math.min(order.fulfilment.deliveryFee, Math.max(0, paid - itemsSubtotal(order)))
+  return { orderId: order.id, number: order.number, createdAt: order.createdAt, received, transactionFee, serviceFee, delivery, net: received - transactionFee - serviceFee - delivery }
+}
+
+/** Net revenue for orders placed since a date (or ever): what's left after fees and delivery. */
+export function netRevenueReport(state: AppState, since?: Date) {
+  const rows = state.orders
+    .filter((o) => amountPaid(o) > 0 && (!since || new Date(o.createdAt) >= since))
+    .map((o) => orderMoney(state, o))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const sum = (k: keyof Pick<OrderMoney, 'received' | 'transactionFee' | 'serviceFee' | 'delivery' | 'net'>) => rows.reduce((s, r) => s + r[k], 0)
+  return {
+    rows,
+    received: sum('received'),
+    transactionFee: sum('transactionFee'),
+    serviceFee: sum('serviceFee'),
+    delivery: sum('delivery'),
+    net: sum('net'),
+  }
 }

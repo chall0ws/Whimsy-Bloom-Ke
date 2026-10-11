@@ -292,16 +292,21 @@ function StaffBubble({ message: m }: { message: Message }) {
   return (
     <div className={cx('flex', shop ? 'justify-end' : 'justify-start')}>
       <div className={cx('max-w-[78%] rounded-2xl px-3.5 py-2 text-sm', shop ? 'rounded-br-md bg-green text-on-green' : 'rounded-bl-md bg-surface-2 text-ink')}>
+        {m.imageUrl && <img src={m.imageUrl} alt="Photo" loading="lazy" className="mb-1.5 max-h-64 w-full rounded-xl object-cover" />}
         <p className="whitespace-pre-wrap">{m.text}</p>
         {m.kind === 'PAYMENT_LINK' && order && (
           <div className="mt-2 rounded-lg bg-black/10 px-2.5 py-1.5 text-xs">
             {orderSummary(state, order)} · {formatKES(orderTotal(order))} ·{' '}
-            {order.payment.status === 'UNPAID' ? (
-              'not paid yet'
-            ) : (
+            {order.payment.status === 'PAID' ? (
               <span className="inline-flex items-center gap-1 font-semibold">
                 <CircleCheck size={12} aria-hidden /> paid
               </span>
+            ) : order.payment.status === 'DEPOSIT_PAID' ? (
+              'deposit paid'
+            ) : order.payment.status === 'REFUNDED' ? (
+              'refunded'
+            ) : (
+              'not paid yet'
             )}
           </div>
         )}

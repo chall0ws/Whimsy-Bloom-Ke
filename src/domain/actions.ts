@@ -43,7 +43,8 @@ export type Action =
   /** Records a payment made outside Paystack (cash, M-Pesa to her number) for whatever is due now. */
   | { type: 'CONFIRM_PAYMENT'; orderId: string; method: PaymentMethod; reference: string }
   /** The bouquet is made: set the delivery fee and ask for the balance (remaining 50% + delivery). */
-  | { type: 'ORDER_READY'; orderId: string; deliveryFee: number }
+  /** photoUrl is the order's photo from now on: leaving it out removes one added before. */
+  | { type: 'ORDER_READY'; orderId: string; deliveryFee: number; photoUrl?: string }
   | { type: 'CREATE_ORDER'; draft: OrderDraft }
   | { type: 'SET_THREAD_READ'; threadId: string; read: boolean }
   | { type: 'SEND_MESSAGE'; threadId: string; text: string }
@@ -202,7 +203,7 @@ function run(tx: Tx, action: Action): string | undefined {
     case 'CONFIRM_PAYMENT':
       return confirmPayment(tx, action.orderId, action.method, action.reference)
     case 'ORDER_READY':
-      return orderReady(tx, action.orderId, action.deliveryFee)
+      return orderReady(tx, action.orderId, action.deliveryFee, action.photoUrl)
     case 'CREATE_ORDER':
       return createOrder(tx, action.draft)
     case 'SET_THREAD_READ': {
@@ -283,6 +284,7 @@ function run(tx: Tx, action: Action): string | undefined {
       if (!Number.isInteger(next.defaultShippingFee) || next.defaultShippingFee < 0) {
         return 'Delivery fee must be a whole KES amount.'
       }
+      if (!(next.transactionFeePercent >= 0 && next.transactionFeePercent <= 10)) return 'Transaction fee must be between 0% and 10%.'
       tx.state = { ...tx.state, settings: next }
       tx.audit(`Updated settings: ${describeSettingsChange(action.patch)}`)
       return
@@ -460,6 +462,7 @@ function describeSettingsChange(patch: Partial<Settings>): string {
     parts.push(patch.feeOnHandDelivery ? 'fee applies to hand delivery' : 'no fee on hand delivery')
   }
   if (patch.defaultShippingFee !== undefined) parts.push(`usual delivery fee outside Nairobi ${formatKES(patch.defaultShippingFee)}`)
+  if (patch.transactionFeePercent !== undefined) parts.push(`transaction fee ${patch.transactionFeePercent}%`)
   if (patch.payoutSchedule !== undefined) parts.push(`${patch.payoutSchedule.toLowerCase()} payouts`)
   return parts.join(', ') || 'no changes'
 }
@@ -617,22 +620,27 @@ function confirmPayment(tx: Tx, orderId: string, method: PaymentMethod, referenc
  * price plus delivery. The customer sees "Pay balance" in their account and chat; the dashboard
  * also offers a WhatsApp message.
  */
-function orderReady(tx: Tx, orderId: string, deliveryFee: number) {
+function orderReady(tx: Tx, orderId: string, deliveryFee: number, photoUrl?: string) {
   const order = tx.order(orderId)
   if (!order) return 'Order not found.'
   if (!Number.isInteger(deliveryFee) || deliveryFee < 0) return 'Enter the delivery fee as a whole KES amount (0 if free).'
+  // A stored photo (live) or a small inline one (demo).
+  if (photoUrl && !/^https:\/\/\S+$/.test(photoUrl) && !/^data:image\/(jpeg|png|webp);base64,/.test(photoUrl)) return 'That photo couldn’t be used. Please add it again.'
+  if (photoUrl && photoUrl.length > 400_000) return 'That photo is too large.'
   const refix = order.status === 'READY' && amountDue(order) > 0
   if (!['PENDING', 'PROCESSING'].includes(order.status) && !refix) {
     if (order.status === 'PENDING_PAYMENT') return 'Waiting for the deposit.'
     return `${order.number} is ${STATUS_LABEL[order.status].toLowerCase()}.`
   }
   // Fix what's been paid before the total changes (older orders worked it out from the total).
+  const { readyPhotoUrl: _previous, ...unchanged } = order
   let next: Order = {
-    ...order,
+    ...unchanged,
     status: 'READY',
     readyAt: tx.at,
     fulfilment: { ...order.fulfilment, deliveryFee },
     payment: { ...order.payment, records: paymentRecords(order) },
+    ...(photoUrl ? { readyPhotoUrl: photoUrl } : {}),
     history: refix ? order.history : [...order.history, { status: 'READY', at: tx.at, by: tx.actor, note: `Ready · delivery ${formatKES(deliveryFee)}` }],
   }
   if (!order.materialsDeducted) {
@@ -650,7 +658,9 @@ function orderReady(tx: Tx, orderId: string, deliveryFee: number) {
     balance > 0
       ? `Your order ${order.number} is ready 🌸 Balance to pay: ${formatKES(balance)} (${formatKES(rest)} remaining + ${formatKES(deliveryFee)} delivery). Tap below to pay, and we’ll send it your way.`
       : `Your order ${order.number} is ready and fully paid 🌸 We’ll send it your way shortly.`
-  tx.postToThread(order.threadId, 'SHOP', text, balance > 0 ? { kind: 'PAYMENT_LINK', orderId: order.id } : {})
+  // The photo goes to the chat once, not again when only the delivery fee is fixed.
+  const newPhoto = photoUrl && photoUrl !== order.readyPhotoUrl ? photoUrl : undefined
+  tx.postToThread(order.threadId, 'SHOP', text, { ...(balance > 0 ? { kind: 'PAYMENT_LINK' as const, orderId: order.id } : {}), ...(newPhoto ? { imageUrl: newPhoto } : {}) })
   tx.notices.push(balance > 0 ? `${order.number} is ready. Balance due: ${formatKES(balance)}.` : `${order.number} is ready and fully paid.`)
 }
 

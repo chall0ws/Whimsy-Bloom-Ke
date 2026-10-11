@@ -6,7 +6,7 @@ import { PageHeader } from '../components/Layout'
 import { CreateOrderDialog, OrderTable } from '../components/orders'
 import { Avatar, Card, cx, Segmented, UnreadBadge, useDialog } from '../components/ui'
 import { formatDate, formatKES, formatNumber, relativeTime } from '../domain/format'
-import { customerGrowth, lastMessageAt, ordersToday, productPerformance, revenueSince, totalRevenue, unreadCount, unreadTotals } from '../domain/metrics'
+import { customerGrowth, lastMessageAt, netRevenueReport, ordersToday, productPerformance, revenueSince, totalRevenue, unreadCount, unreadTotals } from '../domain/metrics'
 import { sortNewestFirst } from '../domain/orders'
 import type { OrderStatus } from '../domain/types'
 import { useLiveSignals } from '../state/live'
@@ -140,9 +140,93 @@ export function Overview() {
           <ColumnChart data={growth} format={formatNumber} ariaLabel="New customers per week" />
         </ChartCard>
       </div>
+      <NetRevenueCard since={since} rangeLabel={range === 'ALL' ? 'all time' : `the last ${range} days`} />
 
       <CreateOrderDialog key={creating.key} open={creating.open} onClose={creating.hide} />
     </>
+  )
+}
+
+/** What's left of the money customers paid after transaction fees, service fees and delivery. */
+function NetRevenueCard({ since, rangeLabel }: { since?: Date; rangeLabel: string }) {
+  const { state, openOrder } = useStore()
+  const [showAll, setShowAll] = useState(false)
+  const report = netRevenueReport(state, since)
+  const rows = showAll ? report.rows : report.rows.slice(0, 8)
+  const parts = [
+    { label: 'Paid by customers', value: report.received, detail: 'Deposits and balances, less refunds' },
+    { label: `Transaction fees (${state.settings.transactionFeePercent}%)`, value: -report.transactionFee, detail: 'M-Pesa / card processing' },
+    { label: 'Service fees', value: -report.serviceFee, detail: `${formatKES(state.settings.serviceFee)} per shipped order` },
+    { label: 'Delivery', value: -report.delivery, detail: 'Passed on to riders and couriers' },
+  ]
+  return (
+    <Card className="mt-4" title="Net revenue" subtitle={`Orders placed in ${rangeLabel} with a payment. ${report.rows.length} orders.`}>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        {parts.map((p) => (
+          <div key={p.label} className="rounded-xl border border-line p-3">
+            <div className="text-xs text-muted">{p.label}</div>
+            <div className={cx('tabular mt-1 whitespace-nowrap text-lg font-semibold', p.value < 0 && 'text-ink-2')}>
+              {p.value < 0 ? '− ' : ''}
+              {formatKES(Math.abs(p.value))}
+            </div>
+            <div className="mt-0.5 text-[11px] text-muted">{p.detail}</div>
+          </div>
+        ))}
+        <div className="col-span-2 rounded-xl bg-green p-3 text-on-green md:col-span-1">
+          <div className="text-xs opacity-90">Net revenue</div>
+          <div className="tabular mt-1 whitespace-nowrap text-2xl font-semibold md:text-xl">{formatKES(report.net)}</div>
+          <div className="mt-0.5 text-[11px] opacity-90">What the shop keeps</div>
+        </div>
+      </div>
+      {report.rows.length > 0 && (
+        <>
+          <div className="mt-5 overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="text-left">
+                  <th className="eyebrow pb-2 pr-3 font-semibold">Order</th>
+                  <th className="eyebrow pb-2 pr-3 text-right font-semibold">Paid</th>
+                  <th className="eyebrow pb-2 pr-3 text-right font-semibold">Txn fee</th>
+                  <th className="eyebrow pb-2 pr-3 text-right font-semibold">Service fee</th>
+                  <th className="eyebrow pb-2 pr-3 text-right font-semibold">Delivery</th>
+                  <th className="eyebrow pb-2 text-right font-semibold">Net</th>
+                </tr>
+              </thead>
+              <tbody className="tabular">
+                {rows.map((r) => (
+                  <tr key={r.orderId} onClick={() => openOrder(r.orderId)} className="cursor-pointer border-t border-line hover:bg-surface-2/60">
+                    <td className="py-2 pr-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openOrder(r.orderId)
+                        }}
+                        className="font-semibold hover:underline"
+                      >
+                        {r.number}
+                      </button>{' '}
+                      <span className="text-xs text-muted">{formatDate(r.createdAt)}</span>
+                    </td>
+                    <td className="py-2 pr-3 text-right">{formatKES(r.received)}</td>
+                    <td className="py-2 pr-3 text-right text-ink-2">{r.transactionFee ? `− ${formatKES(r.transactionFee)}` : '—'}</td>
+                    <td className="py-2 pr-3 text-right text-ink-2">{r.serviceFee ? `− ${formatKES(r.serviceFee)}` : '—'}</td>
+                    <td className="py-2 pr-3 text-right text-ink-2">{r.delivery ? `− ${formatKES(r.delivery)}` : '—'}</td>
+                    <td className="py-2 text-right font-semibold">{formatKES(r.net)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {report.rows.length > 8 && (
+            <button type="button" onClick={() => setShowAll(!showAll)} className="mt-3 text-sm font-medium text-ink-2 hover:text-ink">
+              {showAll ? 'Show fewer' : `Show all ${report.rows.length} orders`}
+            </button>
+          )}
+          <p className="mt-3 text-xs text-muted">Service fees are charged when an order ships, and delivery once the customer has paid it, so orders still in progress show them later.</p>
+        </>
+      )}
+    </Card>
   )
 }
 
