@@ -581,7 +581,9 @@ function createOrder(tx: Tx, draft: OrderDraft) {
   if (items.length === 0) return 'Add at least one bouquet.'
   if (items.some((i) => !Number.isInteger(i.qty))) return 'Quantities must be whole numbers.'
   for (const item of items) {
-    if (!tx.state.products.some((p) => p.id === item.productId)) return 'Unknown product.'
+    const product = tx.state.products.find((p) => p.id === item.productId)
+    if (!product) return 'Unknown product.'
+    if (product.hidden) return `${product.name} is no longer available.`
   }
   if (!draft.address.trim()) {
     return draft.method === 'SHIPPING' ? 'Add the delivery address.' : 'Add where to hand-deliver.'

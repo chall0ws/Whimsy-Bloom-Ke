@@ -6,13 +6,45 @@ export const USERS: User[] = [
 ]
 
 export const PRODUCTS: Product[] = [
-  { id: 'p-pink-lily', name: 'Bespoke Pink Lily', price: 3500, blurb: 'Hand-shaped pink lilies with eucalyptus leaves.' },
-  { id: 'p-giant-rose', name: 'Giant Rose', price: 4800, blurb: 'A single statement rose, 60 cm across.' },
-  { id: 'p-tulip', name: 'Soft Pink Tulips', price: 2800, blurb: 'Ten tulips in blush and soft pink.' },
-  { id: 'p-peony', name: 'Peony Posy', price: 3200, blurb: 'Full peonies with baby’s breath.' },
-  { id: 'p-sunflower', name: 'Sunflower Bunch', price: 2500, blurb: 'Bright sunflowers wrapped in kraft paper.' },
-  { id: 'p-rosebud-box', name: 'Rosebud Box', price: 1800, blurb: 'Nine rosebuds in a keepsake box.' },
+  // Bouquets for sale, in the order the shop shows them. The first one is the home page's feature.
+  { id: 'p-peach-blossom-crown', name: 'Peach Blossom Crown', price: 4550, image: 'products/peach-blossom-crown.jpg', blurb: 'A ring of peach lilies around a speckled pink stargazer, in rose-print wrap.' },
+  { id: 'p-golden-hour', name: 'Golden Hour', price: 4200, image: 'products/golden-hour.jpg', blurb: 'Seven sunflowers with dried baby’s breath, tied with a black satin bow.' },
+  { id: 'p-lavender-dream', name: 'Lavender Dream', price: 4700, image: 'products/lavender-dream.jpg', blurb: 'Violet bellflowers circling a speckled lavender lily.' },
+  { id: 'p-velvet-valentine', name: 'Velvet Valentine', price: 4950, image: 'products/velvet-valentine.jpg', blurb: 'Burgundy and blush lilies around a stargazer, on black floral wrap.' },
+  { id: 'p-peach-sunrise', name: 'Peach Sunrise', price: 4300, image: 'products/peach-sunrise.jpg', blurb: 'Coral carnations and sunflowers with little white daisies, in gold-edged wrap.' },
+  { id: 'p-blue-lagoon', name: 'Blue Lagoon', price: 4600, image: 'products/blue-lagoon.jpg', blurb: 'Lilies in every shade of blue, from deep cobalt to cloud white.' },
+  { id: 'p-autumn-cocoa', name: 'Autumn Cocoa', price: 4750, image: 'products/autumn-cocoa.jpg', blurb: 'Cocoa, cream and caramel blooms with daisies, tied with a brown satin ribbon.' },
+  { id: 'p-mint-whisper', name: 'Mint Whisper', price: 4500, image: 'products/mint-whisper.jpg', blurb: 'Snow-white lilies and mint carnations in a crystal-clear wrap.' },
+  { id: 'p-scarlet-night', name: 'Scarlet Night', price: 4850, image: 'products/scarlet-night.jpg', blurb: 'A dozen scarlet lilies on black wrap with hand-drawn florals.' },
+  { id: 'p-raspberry-garden', name: 'Raspberry Garden', price: 4900, image: 'products/raspberry-garden.jpg', blurb: 'Raspberry carnations and speckled stargazer lilies, wrapped in white and gold.' },
+  { id: 'p-spring-meadow', name: 'Spring Meadow', price: 4250, image: 'products/spring-meadow.jpg', blurb: 'Red tulips, blush daffodils and leafy sprigs, tied with a chocolate ribbon.' },
+  { id: 'p-violet-starlight', name: 'Violet Starlight', price: 4350, image: 'products/violet-starlight.jpg', blurb: 'Shimmering violet lilies in layered lavender wrap.' },
+  { id: 'p-pink-picnic', name: 'Pink Picnic', price: 4000, image: 'products/pink-picnic.jpg', blurb: 'A playful posy of pink and white blooms in gingham wrap with a pearl trim.' },
+  { id: 'p-mocha-lily', name: 'Mocha Lily', price: 4400, image: 'products/mocha-lily.jpg', blurb: 'Lilies in cream, caramel and chocolate, wrapped in warm kraft tones.' },
+  { id: 'p-rosy-stargazer', name: 'Rosy Stargazer', price: 4650, image: 'products/rosy-stargazer.jpg', blurb: 'Rose-pink lilies around a speckled stargazer, in soft pink wrap.' },
+  { id: 'p-midnight-romance', name: 'Midnight Romance', price: 4800, image: 'products/midnight-romance.jpg', blurb: 'Crimson carnations and blush lilies around a frilled white bloom, in smoky black wrap.' },
+  { id: 'p-lilac-twilight', name: 'Lilac Twilight', price: 4100, image: 'products/lilac-twilight.jpg', blurb: 'Violet lilies with lilac sprigs, in a lavender wrap.' },
+
+  // Earlier sample bouquets: no longer sold, kept so past orders still show their names.
+  { id: 'p-pink-lily', name: 'Bespoke Pink Lily', price: 3500, blurb: 'Hand-shaped pink lilies with eucalyptus leaves.', hidden: true },
+  { id: 'p-giant-rose', name: 'Giant Rose', price: 4800, blurb: 'A single statement rose, 60 cm across.', hidden: true },
+  { id: 'p-tulip', name: 'Soft Pink Tulips', price: 2800, blurb: 'Ten tulips in blush and soft pink.', hidden: true },
+  { id: 'p-peony', name: 'Peony Posy', price: 3200, blurb: 'Full peonies with baby’s breath.', hidden: true },
+  { id: 'p-sunflower', name: 'Sunflower Bunch', price: 2500, blurb: 'Bright sunflowers wrapped in kraft paper.', hidden: true },
+  { id: 'p-rosebud-box', name: 'Rosebud Box', price: 1800, blurb: 'Nine rosebuds in a keepsake box.', hidden: true },
 ]
+
+/** Bouquets customers can order now. */
+export const forSale = (products: Product[]) => products.filter((p) => !p.hidden)
+
+/**
+ * The catalogue in this file is the source of truth. Products saved earlier that are no longer
+ * listed stay (hidden) so old orders keep their names.
+ */
+export function withCatalogue(saved: Product[]): Product[] {
+  const listed = new Set(PRODUCTS.map((p) => p.id))
+  return [...PRODUCTS, ...saved.filter((p) => !listed.has(p.id)).map((p) => ({ ...p, hidden: true }))]
+}
 
 export const MATERIALS: Material[] = [
   { id: 'm-crepe-pink', name: 'Crepe paper — pink', unit: 'roll', onHand: 14, reorderLevel: 6 },

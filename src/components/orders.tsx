@@ -2,7 +2,7 @@ import { Ban, Clock, CreditCard, Lock, MapPin, MessageCircle, Plus, Send, Trash2
 import { useState } from 'react'
 import { LIVE } from '../config'
 import type { OrderDraft } from '../domain/actions'
-import { COURIERS } from '../domain/catalog'
+import { COURIERS, forSale } from '../domain/catalog'
 import { formatDate, formatDateTime, formatKES, relativeTime } from '../domain/format'
 import {
   earnsServiceFee,
@@ -445,7 +445,7 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
   const [channel, setChannel] = useState<Channel>(thread ? 'LIVE_CHAT' : 'MANUAL')
   const [name, setName] = useState(customer?.name ?? '')
   const [phone, setPhone] = useState(customer?.phone ?? '')
-  const [items, setItems] = useState([{ productId: state.products[0].id, qty: 1 }])
+  const [items, setItems] = useState([{ productId: forSale(state.products)[0].id, qty: 1 }])
   const [customisation, setCustomisation] = useState('')
   const [method, setMethod] = useState<FulfilmentMethod>('SHIPPING')
   const [address, setAddress] = useState('')
@@ -536,7 +536,7 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
                   aria-label="Product"
                   onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, productId: e.target.value } : x)))}
                 >
-                  {state.products.map((p) => (
+                  {forSale(state.products).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} — {formatKES(p.price)}
                     </option>
@@ -557,7 +557,7 @@ export function CreateOrderDialog({ open, onClose, thread }: { open: boolean; on
                 )}
               </div>
             ))}
-            <Button size="sm" variant="ghost" onClick={() => setItems([...items, { productId: state.products[0].id, qty: 1 }])}>
+            <Button size="sm" variant="ghost" onClick={() => setItems([...items, { productId: forSale(state.products)[0].id, qty: 1 }])}>
               <Plus size={14} aria-hidden /> Add another bouquet
             </Button>
           </div>

@@ -1,4 +1,4 @@
-import { MATERIALS, PRODUCTS } from '../src/domain/catalog'
+import { MATERIALS, withCatalogue } from '../src/domain/catalog'
 import { STATE_VERSION } from '../src/domain/seed'
 import type { AppState, ChatStatus, Settings } from '../src/domain/types'
 
@@ -64,7 +64,7 @@ export function fromRecords(rows: RecordRow[], meta: Meta): AppState {
     version: STATE_VERSION,
     users: of<AppState['users'][number]>('user').sort((a, b) => a.id.localeCompare(b.id)),
     currentUserId: '',
-    products: of<AppState['products'][number]>('product').sort(byIndex(PRODUCTS.map((p) => p.id))),
+    products: withCatalogue(of<AppState['products'][number]>('product')),
     materials: of<AppState['materials'][number]>('material').sort(byIndex(MATERIALS.map((m) => m.id))),
     recipes,
     customers: of<AppState['customers'][number]>('customer').sort((a, b) => a.createdAt.localeCompare(b.createdAt)),

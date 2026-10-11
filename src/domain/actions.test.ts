@@ -15,7 +15,8 @@ function emptyState(overrides: Partial<AppState> = {}): AppState {
     version: 1,
     users: USERS,
     currentUserId: 'u-owner',
-    products: PRODUCTS,
+    // The order, fee and stock rules are checked with the original sample bouquets and their recipes.
+    products: PRODUCTS.map((p) => ({ ...p, hidden: false })),
     materials: MATERIALS.map((m) => ({ ...m })),
     recipes: RECIPES,
     customers: [],
