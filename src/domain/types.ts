@@ -14,21 +14,34 @@ export type Channel = 'LIVE_CHAT' | 'WEB_FORM' | 'PORTAL' | 'MANUAL'
 
 /**
  * Order lifecycle:
- *   PENDING_PAYMENT → PENDING → PROCESSING → SHIPPED → (REFUNDED)
+ *   PENDING_PAYMENT (awaiting the 50% deposit) → PENDING (deposit paid) → PROCESSING (being made)
+ *   → READY (delivery fee set; balance due) → SHIPPED (once the balance is paid) → (REFUNDED)
  * and CANCELLED from anything before SHIPPED.
  */
 export type OrderStatus =
   | 'PENDING_PAYMENT'
   | 'PENDING'
   | 'PROCESSING'
+  | 'READY'
   | 'SHIPPED'
   | 'CANCELLED'
   | 'REFUNDED'
 
-/** SHIPPING goes by courier and carries a delivery fee; HAND_DELIVERY costs the customer nothing. */
+/** Where it's going: HAND_DELIVERY is within Nairobi, SHIPPING is outside Nairobi (by courier). */
 export type FulfilmentMethod = 'SHIPPING' | 'HAND_DELIVERY'
-export type PaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED'
+/** UNPAID → DEPOSIT_PAID (50%) → PAID (balance and delivery too). */
+export type PaymentStatus = 'UNPAID' | 'DEPOSIT_PAID' | 'PAID' | 'REFUNDED'
 export type PaymentMethod = 'MPESA' | 'CARD'
+
+/** One payment towards an order. */
+export interface PaymentRecord {
+  /** DEPOSIT is the first 50%; BALANCE is the rest plus delivery; FULL is an order paid in one go. */
+  kind: 'DEPOSIT' | 'BALANCE' | 'FULL'
+  amount: number
+  method: PaymentMethod
+  reference: string
+  at: string
+}
 
 export interface Product {
   id: string
@@ -75,6 +88,7 @@ export interface StatusEvent {
 export interface Fulfilment {
   method: FulfilmentMethod
   address: string
+  /** Set when the order is marked ready (0 until then). */
   deliveryFee: number
   courier?: string
   trackingNumber?: string
@@ -82,6 +96,9 @@ export interface Fulfilment {
 
 export interface Payment {
   status: PaymentStatus
+  /** Payments received, in order. Orders from before deposits only have method/reference/paidAt. */
+  records?: PaymentRecord[]
+  /** The latest payment's method and reference, for display. */
   method?: PaymentMethod
   reference?: string
   paidAt?: string
@@ -101,6 +118,7 @@ export interface Order {
   payment: Payment
   status: OrderStatus
   createdAt: string
+  readyAt?: string
   shippedAt?: string
   history: StatusEvent[]
   materialsDeducted: boolean

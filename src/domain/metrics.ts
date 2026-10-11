@@ -2,8 +2,8 @@ import { isSameDay } from './format'
 import { netRevenue } from './orders'
 import type { AppState, Customer, Order, OrderStatus, Thread } from './types'
 
-/** Paid orders that are still live (not cancelled or refunded) count as sales. */
-const SOLD: OrderStatus[] = ['PENDING', 'PROCESSING', 'SHIPPED']
+/** Orders with a deposit paid that are still live (not cancelled or refunded) count as sales. */
+const SOLD: OrderStatus[] = ['PENDING', 'PROCESSING', 'READY', 'SHIPPED']
 
 export function ordersToday(orders: Order[], now: Date): Order[] {
   return orders.filter((o) => isSameDay(new Date(o.createdAt), now))

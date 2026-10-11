@@ -1,6 +1,6 @@
 import { COURIERS, DEFAULT_SETTINGS, MATERIALS, PRODUCTS, RECIPES, USERS } from './catalog'
 import { formatKES } from './format'
-import { orderTotal, STATUS_LABEL } from './orders'
+import { depositFor, orderTotal, STATUS_LABEL } from './orders'
 import { startOfWeek } from './metrics'
 import type {
   AppState,
@@ -17,7 +17,7 @@ import type {
   Thread,
 } from './types'
 
-export const STATE_VERSION = 4
+export const STATE_VERSION = 5
 
 /**
  * The starting point for a real shop: the catalogue and materials, and nothing else.
@@ -329,6 +329,22 @@ class Gen {
       linked(faith, daysAgo * 24 * 60, { productId: 'p-tulip', qty: 1, channel: 'LIVE_CHAT' }, 'Soft pink tulips, white ribbon.')
     }
     achiengOrder.payment.linkSentAt = ago(160)
+    // Mercy's bouquet is made: deposit paid, marked ready with a delivery fee, balance waiting.
+    {
+      const reference = mercyOrder.payment.reference ?? 'SDEP0MERCY'
+      mercyOrder.status = 'READY'
+      mercyOrder.readyAt = ago(40)
+      mercyOrder.materialsDeducted = true
+      mercyOrder.fulfilment = { ...mercyOrder.fulfilment, deliveryFee: 200 }
+      mercyOrder.payment = {
+        status: 'DEPOSIT_PAID',
+        records: [{ kind: 'DEPOSIT', amount: depositFor(mercyOrder), method: 'MPESA', reference, at: mercyOrder.createdAt }],
+        method: 'MPESA',
+        reference,
+        paidAt: mercyOrder.createdAt,
+      }
+      mercyOrder.history.push({ status: 'READY', at: ago(40), by: OWNER, note: 'Ready · delivery KES 200' })
+    }
 
     const msg = (from: Message['from'], minutesAgo: number, text: string, read = true, extra: Partial<Message> = {}): Message => ({
       id: this.id('m'),
@@ -394,6 +410,13 @@ class Gen {
             msg('SHOP', 60 * 25, `Sure Mercy! Order ${mercyOrder.number} is confirmed 🌸 We’ll hand-deliver it to you.`),
             msg('SHOP', 60 * 3, 'Quick question: would you like a lilac or blush ribbon?'),
             msg('CUSTOMER', 60 * 2.5, 'Blush please! Thank you 💗'),
+            msg(
+              'SHOP',
+              40,
+              `Your order ${mercyOrder.number} is ready 🌸 Balance to pay: ${formatKES(orderTotal(mercyOrder) - depositFor(mercyOrder))} (${formatKES(orderTotal(mercyOrder) - depositFor(mercyOrder) - 200)} remaining + KES 200 delivery). Tap below to pay, and we’ll send it your way.`,
+              true,
+              { kind: 'PAYMENT_LINK', orderId: mercyOrder.id },
+            ),
           ]),
           thread(amina, 'CHAT_LINK', [
             greeting(amina, 60 * 24 * 4 + 6),

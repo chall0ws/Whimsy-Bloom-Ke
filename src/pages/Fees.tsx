@@ -57,8 +57,8 @@ export function Fees() {
             <Rule>Charged once, the moment an order is marked <strong>Shipped</strong>. Nothing is charged before then.</Rule>
             <Rule>Shipped orders are final. If one is refunded later, the service fee and delivery fee are kept.</Rule>
             <Rule>
-              Hand-delivered orders cost the customer nothing for delivery and{' '}
-              {state.settings.feeOnHandDelivery ? 'still earn the service fee' : 'earn no service fee'}.
+              Orders delivered within Nairobi{' '}
+              {state.settings.feeOnHandDelivery ? 'earn the service fee too' : 'earn no service fee'}.
             </Rule>
             <Rule>The admin records each payout with its M-Pesa code. The balance goes down when the super admin confirms receipt.</Rule>
           </ul>

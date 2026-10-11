@@ -162,13 +162,16 @@ export function Terms() {
         <ul>
           <li>You don’t need an account to order. If you create one, keep your sign-in details to yourself.</li>
           <li>
-            You can pay straight away with M-Pesa or card through{' '}
+            Every order starts with a <strong>50% deposit</strong> of the bouquet price, paid with M-Pesa or card through{' '}
             <a href="https://paystack.com" target="_blank" rel="noopener noreferrer" className={link}>
               Paystack
             </a>
-            , or place your order and pay later.
+            . We start making your bouquet once the deposit is confirmed. An order without a deposit isn’t reserved.
           </li>
-          <li>We start making your bouquet once the payment is confirmed. An unpaid order isn’t reserved.</li>
+          <li>
+            When your bouquet is ready, we’ll message you with the <strong>balance</strong>: the other 50% plus the delivery fee. You pay it from
+            your order page, and we send your order once it’s paid.
+          </li>
           <li>We may decline or cancel an order, for example if a price was shown wrongly. If you’ve already paid, we’ll refund you in full.</li>
         </ul>
       </Section>
@@ -176,10 +179,8 @@ export function Terms() {
       <Section title="Delivery">
         <ul>
           <li>
-            <strong>Courier delivery</strong> has a delivery fee, shown at checkout before you pay.
-          </li>
-          <li>
-            <strong>Hand delivery</strong> is free where we offer it.
+            At checkout you tell us whether delivery is <strong>within Nairobi</strong> or <strong>outside Nairobi</strong>. We confirm the
+            delivery fee when your order is ready, and it’s added to the balance before you pay it.
           </li>
           <li>
             Please give a correct address and a phone number we can reach. If we can’t deliver because of wrong details or nobody being
@@ -192,7 +193,8 @@ export function Terms() {
       <Section title="Cancellations and refunds">
         <ul>
           <li>
-            <strong>Before your order is sent</strong>, you can cancel it and we’ll refund everything you paid.
+            <strong>The deposit is non-refundable.</strong> If you cancel before your order is sent, we keep the deposit and refund anything
+            you paid on top of it.
           </li>
           <li>
             <strong>Once your order has been sent</strong>, it can’t be cancelled. If there’s a problem with it, tell us as soon as possible

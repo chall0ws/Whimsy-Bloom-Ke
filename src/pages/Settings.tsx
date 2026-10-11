@@ -43,11 +43,11 @@ export function Settings() {
             <label className="flex items-start gap-3 rounded-xl border border-line p-3">
               <input type="checkbox" className="mt-1 h-4 w-4 accent-[var(--green)]" checked={draft.feeOnHandDelivery} onChange={(e) => setDraft({ ...draft, feeOnHandDelivery: e.target.checked })} />
               <span>
-                <span className="block text-sm font-semibold">Charge the service fee on hand-delivered orders</span>
-                <span className="block text-xs text-muted">Hand delivery is always free for the customer. This only decides whether those orders earn the partner fee.</span>
+                <span className="block text-sm font-semibold">Charge the service fee on orders delivered within Nairobi</span>
+                <span className="block text-xs text-muted">This only decides whether those orders earn the partner fee.</span>
               </span>
             </label>
-            <Field label="Courier delivery fee (KES)" hint="Default charged to customers for courier delivery. Can be changed per order.">
+            <Field label="Usual delivery fee outside Nairobi (KES)" hint="Suggested when an order going outside Nairobi is marked ready. You set the actual fee each time.">
               <input
                 type="number"
                 min={0}

@@ -37,7 +37,7 @@ export function Home() {
           <h1 className="font-display text-5xl font-semibold leading-[1.05] text-green-ink sm:text-6xl">made with love</h1>
           <HeartDivider className="mx-auto mt-5 w-56 md:mx-0" />
           <p className="mx-auto mt-5 max-w-md text-[15px] leading-relaxed text-ink-2 md:mx-0">
-            Bouquets that never wilt, shaped by hand for birthdays, anniversaries, events and just because. Hand delivery in Nairobi, courier anywhere else.
+            Bouquets that never wilt, shaped by hand for birthdays, anniversaries, events and just because. Delivered within Nairobi and beyond.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3 md:justify-start">
             <a href="#/shop" className="inline-flex h-12 items-center gap-2 rounded-full bg-green px-6 text-[15px] font-medium text-on-green hover:opacity-90">
@@ -92,7 +92,7 @@ export function Home() {
           {[
             ['Choose your bouquet', 'Pick from the shop, or chat with us about something custom.'],
             ['Make it yours', 'Tell us your colours, a card message or any wishes.'],
-            ['We deliver', 'Pay with M-Pesa. We hand-deliver in Nairobi or send it by courier.'],
+            ['We deliver', 'Pay a 50% deposit with M-Pesa or card. When it’s ready, pay the rest plus delivery, within Nairobi or beyond.'],
           ].map(([title, text], i) => (
             <li key={title} className="flex flex-col items-center gap-2 text-center">
               <span className="flex h-10 w-10 items-center justify-center rounded-full bg-pink-wash font-display text-xl font-semibold text-pink-ink">{i + 1}</span>
@@ -192,7 +192,7 @@ export function ProductPage({ productId }: { productId: string }) {
         </div>
         <p className="text-ink-2">{product.blurb}</p>
         <ul className="space-y-1.5 text-sm text-ink-2">
-          {['Handmade to order, never wilts', 'Your colours and card message included', 'Hand delivery in Nairobi is free'].map((t) => (
+          {['Handmade to order, never wilts', 'Your colours and card message included', 'Pay 50% now, the rest when it’s ready'].map((t) => (
             <li key={t} className="flex items-center gap-2">
               <Check size={15} className="text-green-ink" aria-hidden /> {t}
             </li>
@@ -243,7 +243,7 @@ export function ProductPage({ productId }: { productId: string }) {
           </Button>
         </div>
         <p className={cx('flex items-center gap-2 text-xs text-muted')}>
-          <Truck size={14} aria-hidden /> Courier delivery {formatKES(state.settings.defaultShippingFee)} · Hand delivery free in Nairobi
+          <Truck size={14} aria-hidden /> Delivery within or outside Nairobi · the fee is confirmed when it’s ready
         </p>
       </div>
     </div>
