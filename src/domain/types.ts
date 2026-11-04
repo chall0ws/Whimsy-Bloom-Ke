@@ -169,6 +169,8 @@ export interface Message {
   imageUrls?: string[]
   /** Older messages: a single photo. Read both with messageImages(). */
   imageUrl?: string
+  /** Random id from the device that sent it, so pressing Send twice doesn't post it twice. */
+  clientId?: string
 }
 
 /** A live-chat conversation started by a customer from the chat page or the order form. */

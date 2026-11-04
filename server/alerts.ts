@@ -90,6 +90,20 @@ export const callMeBot: SendAlert = async (to, text) => {
   if (!res.ok) throw new Error(`CallMeBot answered ${res.status}`)
 }
 
+type RequestContext = { get?: () => { waitUntil?: (task: Promise<unknown>) => void } | undefined }
+
+/**
+ * Lets Vercel finish a task after the reply has gone back (the same hook as @vercel/functions'
+ * waitUntil), so sending alerts never slows down the chat or checkout. Where there's no such hook
+ * (tests, running locally) it simply waits for the task.
+ */
+export async function afterResponse(task: Promise<unknown>): Promise<void> {
+  const context = (globalThis as Record<symbol, RequestContext | undefined>)[Symbol.for('@vercel/request-context')]
+  const waitUntil = context?.get?.()?.waitUntil
+  if (typeof waitUntil === 'function') waitUntil(task)
+  else await task
+}
+
 /**
  * A Repo that, after each successful save, sends the team a WhatsApp alert about new orders,
  * payments and chats. Alerts never block or undo a save: if sending fails it's only logged.
@@ -111,7 +125,7 @@ export function withAlerts(repo: Repo, recipients: AlertRecipient[], siteUrl: st
       // One message per person per save, so CallMeBot isn't asked for several at once.
       if (alerts.length) {
         const text = alerts.join('\n\n')
-        await Promise.all(recipients.map((to) => send(to, text).catch((error) => console.error('WhatsApp alert failed', error))))
+        await afterResponse(Promise.all(recipients.map((to) => send(to, text).catch((error) => console.error('WhatsApp alert failed', error)))))
       }
       return saved
     },

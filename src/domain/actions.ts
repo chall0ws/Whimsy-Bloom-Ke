@@ -53,7 +53,8 @@ export type Action =
   | { type: 'ORDER_READY'; orderId: string; deliveryFee: number; photoUrls?: string[]; /** Older dashboards: one photo. */ photoUrl?: string }
   | { type: 'CREATE_ORDER'; draft: OrderDraft }
   | { type: 'SET_THREAD_READ'; threadId: string; read: boolean }
-  | { type: 'SEND_MESSAGE'; threadId: string; text: string }
+  /** clientId: a random id per message from the sending device; a repeat with the same id is ignored. */
+  | { type: 'SEND_MESSAGE'; threadId: string; text: string; clientId?: string }
   | { type: 'UPDATE_CUSTOMER'; customerId: string; patch: Partial<Pick<Customer, 'name' | 'phone' | 'email' | 'notes' | 'tags'>> }
   | { type: 'RECORD_PURCHASE'; materialId: string; qty: number; note?: string }
   | { type: 'RECORD_PAYOUT'; amount: number; reference: string }
@@ -75,8 +76,10 @@ export type Action =
       customerId?: string
       /** Start a separate conversation instead of continuing the customer's existing one. */
       newThread?: boolean
+      /** Random id for the first message, so pressing Start twice doesn't start two chats. */
+      clientId?: string
     }
-  | { type: 'CUSTOMER_SEND_MESSAGE'; threadId: string; text: string }
+  | { type: 'CUSTOMER_SEND_MESSAGE'; threadId: string; text: string; clientId?: string }
   | { type: 'CUSTOMER_READ'; threadId: string }
   | { type: 'CUSTOMER_PAY'; orderId: string; reference: string; customerId?: string }
   | { type: 'CUSTOMER_PLACE_ORDER'; draft: OrderDraft }
@@ -231,8 +234,11 @@ function run(tx: Tx, action: Action): string | undefined {
       if (!text) return 'Write a message first.'
       const thread = tx.state.threads.find((t) => t.id === action.threadId)
       if (!thread) return 'Conversation not found.'
+      const clientId = validClientId(action.clientId)
+      // Sent twice (a double tap, or a retry): it's already there.
+      if (clientId && thread.messages.some((m) => m.clientId === clientId)) return
       tx.putThread({ ...thread, messages: thread.messages.map((m) => ({ ...m, read: true })) })
-      tx.postToThread(thread.id, 'SHOP', text)
+      tx.postToThread(thread.id, 'SHOP', text, clientId ? { clientId } : {})
       return
     }
     case 'UPDATE_CUSTOMER': {
@@ -317,7 +323,7 @@ function run(tx: Tx, action: Action): string | undefined {
     case 'CUSTOMER_SEND_MESSAGE': {
       const thread = tx.thread(action.threadId)
       if (!thread) return 'This chat has ended. Please start a new one.'
-      return customerMessage(tx, thread.id, action.text)
+      return customerMessage(tx, thread.id, action.text, validClientId(action.clientId))
     }
     case 'CUSTOMER_READ': {
       const thread = tx.thread(action.threadId)
@@ -409,7 +415,19 @@ function linkAccount(tx: Tx, a: Extract<Action, { type: 'CUSTOMER_LINK_ACCOUNT' 
 
 const digits = (s?: string) => (s ?? '').replace(/\D/g, '').slice(-9)
 
+/** A message id from a device: a short string, or nothing. */
+function validClientId(id: unknown): string | undefined {
+  return typeof id === 'string' && id.length > 0 && id.length <= 64 ? id : undefined
+}
+
 function startChat(tx: Tx, a: Extract<Action, { type: 'CUSTOMER_START_CHAT' }>) {
+  const clientId = validClientId(a.clientId)
+  // Pressed twice: carry on in the chat the first press started.
+  const started = clientId && tx.state.threads.find((t) => t.messages.some((m) => m.clientId === clientId))
+  if (started) {
+    tx.threadId = started.id
+    return
+  }
   const name = a.name.trim()
   if (!name) return 'Please add your name.'
   if (digits(a.phone).length < 9) return 'Please add a phone number we can reach you on.'
@@ -431,14 +449,17 @@ function startChat(tx: Tx, a: Extract<Action, { type: 'CUSTOMER_START_CHAT' }>) 
     tx.postToThread(thread.id, 'SHOP', `Hi ${name.split(' ')[0]}! 🌸 Welcome to Whimsy & Bloom. How can we help?`, { by: AUTO_REPLY })
   }
   tx.threadId = thread.id
-  if (a.text?.trim()) return customerMessage(tx, thread.id, a.text)
+  if (a.text?.trim()) return customerMessage(tx, thread.id, a.text, clientId)
 }
 
-function customerMessage(tx: Tx, threadId: string, raw: string) {
+function customerMessage(tx: Tx, threadId: string, raw: string, clientId?: string) {
   const text = raw.trim()
   if (!text) return 'Write a message first.'
   if (text.length > 2000) return 'That message is too long. Please split it up.'
-  tx.postToThread(threadId, 'CUSTOMER', text)
+  tx.threadId = threadId
+  // Sent twice (a double tap, or a retry): it's already there.
+  if (clientId && tx.thread(threadId)?.messages.some((m) => m.clientId === clientId)) return
+  tx.postToThread(threadId, 'CUSTOMER', text, clientId ? { clientId } : {})
   const thread = tx.thread(threadId)!
   tx.putThread({ ...thread, customerReadAt: tx.at })
   tx.threadId = threadId

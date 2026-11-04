@@ -1,6 +1,7 @@
 import { ChevronLeft, CircleCheck, ExternalLink, Mail, MailOpen, Plus, Search, Send, StickyNote } from 'lucide-react'
 import { PhotoGrid } from '../components/PhotoGrid'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { stillPending, useChatComposer } from '../components/chat/useChatComposer'
 import { PageHeader } from '../components/Layout'
 import { CreateOrderDialog } from '../components/orders'
 import { Avatar, Button, cx, EmptyState, inputClass, Segmented, StatusChip, UnreadBadge, useDialog } from '../components/ui'
@@ -154,7 +155,8 @@ const QUICK_REPLIES = ['Thank you so much! 🌸', 'Your bouquet is being made ri
 
 function Conversation({ thread, online, typing }: { thread: Thread; online: boolean; typing: boolean }) {
   const { state, dispatch } = useStore()
-  const [text, setText] = useState('')
+  const { text, setText, send, pending } = useChatComposer((message, clientId) => dispatch({ type: 'SEND_MESSAGE', threadId: thread.id, text: message, clientId }))
+  const sending = stillPending(pending, thread.messages)
   const creating = useDialog()
   const end = useRef<HTMLDivElement>(null)
   const notifyTyping = useMemo(() => makeTypingNotifier(thread.id, 'shop'), [thread.id])
@@ -174,12 +176,7 @@ function Conversation({ thread, online, typing }: { thread: Thread; online: bool
   // Braces matter: newer browsers return a promise from scrollIntoView, and React would try to call it as a clean-up.
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' })
-  }, [thread.messages.length, typing])
-
-  const send = async () => {
-    const r = await dispatch({ type: 'SEND_MESSAGE', threadId: thread.id, text })
-    if (r.ok) setText('')
-  }
+  }, [thread.messages.length, typing, sending.length])
 
   return (
     <section className="flex min-h-[70vh] flex-col rounded-2xl border border-line bg-surface shadow-card lg:min-h-0">
@@ -222,6 +219,14 @@ function Conversation({ thread, online, typing }: { thread: Thread; online: bool
             </div>
           )
         })}
+        {sending.map((p) => (
+          <div key={p.clientId} className="flex justify-end">
+            <div className="max-w-[78%] rounded-2xl rounded-br-md bg-green px-3.5 py-2 text-sm text-on-green opacity-70">
+              <p className="whitespace-pre-wrap">{p.text}</p>
+              <div className="mt-0.5 text-right text-[10px] opacity-70">Sending…</div>
+            </div>
+          </div>
+        ))}
         {typing && (
           <div className="flex justify-start">
             <span className="rounded-2xl rounded-bl-md bg-surface-2 px-3.5 py-2 text-sm italic text-muted">{customer?.name.split(' ')[0] ?? 'Customer'} is typing…</span>
