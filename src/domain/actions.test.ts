@@ -503,6 +503,26 @@ describe('live chat (customer side)', () => {
     expect(state.threads[0].messages.at(-1)!.from).toBe('SYSTEM')
   })
 
+  it('ignores a message sent twice (pressing Enter again while it was still sending)', () => {
+    const first = start(emptyState(), { clientId: 'start-1' })
+    // Start pressed twice: the same chat, one message.
+    const again = start(first.state, { clientId: 'start-1', newThread: true })
+    expect(again.threadId).toBe(first.threadId)
+    expect(again.state.threads).toEqual(first.state.threads)
+
+    const send = { type: 'CUSTOMER_SEND_MESSAGE' as const, threadId: first.threadId, text: 'For Saturday please', clientId: 'msg-1' }
+    let state = apply(apply(first.state, send), send)
+    const texts = () => state.threads.find((t) => t.id === first.threadId)!.messages.map((m) => m.text)
+    expect(texts().filter((t) => t === 'For Saturday please')).toHaveLength(1)
+    // The same words on purpose, as a new message, still go through.
+    state = apply(state, { ...send, clientId: 'msg-2' })
+    expect(texts().filter((t) => t === 'For Saturday please')).toHaveLength(2)
+
+    const reply = { type: 'SEND_MESSAGE' as const, threadId: first.threadId, text: 'Yes!', clientId: 'shop-1' }
+    state = apply(apply(state, reply), reply)
+    expect(texts().filter((t) => t === 'Yes!')).toHaveLength(1)
+  })
+
   it('records when the customer has seen the shop’s replies', () => {
     const state = apply(emptyState(), { type: 'CUSTOMER_READ', threadId: 't-1' })
     expect(state.threads[0].customerReadAt).toBe(NOW.toISOString())

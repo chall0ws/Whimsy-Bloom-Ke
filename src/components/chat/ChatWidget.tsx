@@ -8,6 +8,7 @@ import { makeTypingNotifier, useLiveSignals, usePresence } from '../../state/liv
 import { payLabel, payingLabel, usePayNow } from '../../shop/OrderBits'
 import { useStore } from '../../state/store'
 import { BloomMark } from '../Logo'
+import { newClientId, stillPending, useChatComposer, type PendingMessage } from './useChatComposer'
 import { Button, cx, Field, inputClass } from '../ui'
 
 const MY_CHAT_KEY = 'whimsy-bloom:my-chat'
@@ -115,8 +116,15 @@ function StartChat({ startedFrom, onStarted }: { startedFrom: Thread['startedFro
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  // One id per attempt: pressing Start twice continues the same chat instead of starting two.
+  const clientId = useRef('')
   const submit = async () => {
-    const r = await dispatch({ type: 'CUSTOMER_START_CHAT', name, phone, text, startedFrom })
+    if (busy) return
+    setBusy(true)
+    clientId.current ||= newClientId()
+    const r = await dispatch({ type: 'CUSTOMER_START_CHAT', name, phone, text, startedFrom, clientId: clientId.current })
+    setBusy(false)
     if (r.ok && r.threadId) onStarted(r.threadId)
   }
   return (
@@ -147,8 +155,8 @@ function StartChat({ startedFrom, onStarted }: { startedFrom: Thread['startedFro
           </button>
         ))}
       </div>
-      <Button type="submit" variant="primary" className="w-full">
-        Start chat
+      <Button type="submit" variant="primary" className="w-full" disabled={busy}>
+        {busy ? 'Starting chat…' : 'Start chat'}
       </Button>
     </form>
   )
@@ -157,8 +165,10 @@ function StartChat({ startedFrom, onStarted }: { startedFrom: Thread['startedFro
 /** A signed-in customer's first message starts the chat with the details from their account. */
 function FirstMessage({ identity, startedFrom, initialText = '' }: { identity: ChatIdentity; startedFrom: Thread['startedFrom']; initialText?: string }) {
   const { dispatch } = useStore()
-  const [text, setText] = useState(initialText)
-  const send = () => dispatch({ type: 'CUSTOMER_START_CHAT', name: identity.name, phone: identity.phone, text, startedFrom })
+  const { text, setText, send, pending } = useChatComposer(
+    (message, clientId) => dispatch({ type: 'CUSTOMER_START_CHAT', name: identity.name, phone: identity.phone, text: message, startedFrom, clientId }),
+    initialText,
+  )
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 py-8 text-center">
@@ -172,6 +182,13 @@ function FirstMessage({ identity, startedFrom, initialText = '' }: { identity: C
             </button>
           ))}
         </div>
+        {pending.length > 0 && (
+          <div className="w-full space-y-2 text-left">
+            {pending.map((p) => (
+              <SendingBubble key={p.clientId} message={p} />
+            ))}
+          </div>
+        )}
       </div>
       <Composer text={text} setText={setText} onSend={send} />
     </>
@@ -214,7 +231,8 @@ function Composer({ text, setText, onSend, onTyping }: { text: string; setText: 
 
 function Conversation({ thread, onReset, initialText = '' }: { thread: Thread; onReset?: () => void; initialText?: string }) {
   const { dispatch } = useStore()
-  const [text, setText] = useState(initialText)
+  const { text, setText, send, pending } = useChatComposer((message, clientId) => dispatch({ type: 'CUSTOMER_SEND_MESSAGE', threadId: thread.id, text: message, clientId }), initialText)
+  const sending = stillPending(pending, thread.messages)
   const end = useRef<HTMLDivElement>(null)
   const live = useLiveSignals()
   const notifyTyping = useMemo(() => makeTypingNotifier(thread.id, 'customer'), [thread.id])
@@ -230,12 +248,7 @@ function Conversation({ thread, onReset, initialText = '' }: { thread: Thread; o
   // Braces matter: newer browsers return a promise from scrollIntoView, and React would try to call it as a clean-up.
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' })
-  }, [thread.messages.length])
-
-  const send = async () => {
-    const r = await dispatch({ type: 'CUSTOMER_SEND_MESSAGE', threadId: thread.id, text })
-    if (r.ok) setText('')
-  }
+  }, [thread.messages.length, sending.length])
 
   return (
     <>
@@ -250,6 +263,9 @@ function Conversation({ thread, onReset, initialText = '' }: { thread: Thread; o
             </div>
           )
         })}
+        {sending.map((p) => (
+          <SendingBubble key={p.clientId} message={p} />
+        ))}
         {live.isTyping(thread.id, 'shop') && <div className="text-xs italic text-muted">Whimsy &amp; Bloom is typing…</div>}
         <div ref={end} />
       </div>
@@ -260,6 +276,18 @@ function Conversation({ thread, onReset, initialText = '' }: { thread: Thread; o
         </button>
       )}
     </>
+  )
+}
+
+/** The customer's message, shown at once while it's on its way. */
+function SendingBubble({ message: p }: { message: PendingMessage }) {
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[82%] rounded-2xl rounded-br-md bg-pink px-3.5 py-2 text-sm text-[#3b1a24] opacity-70">
+        <p className="whitespace-pre-wrap">{p.text}</p>
+        <div className="mt-0.5 text-right text-[10px] opacity-70">Sending…</div>
+      </div>
+    </div>
   )
 }
 
